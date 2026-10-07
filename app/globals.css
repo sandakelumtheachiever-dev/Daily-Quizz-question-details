@@ -6,3 +6,5 @@ button{background:#2563eb;border:0;cursor:pointer}button:hover{background:#3b82f
 .note{color:#60a5fa}.err{color:#f87171}h3{color:#60a5fa}
 aside{position:fixed;right:0;top:80px;background:#0f172a;border:1px solid #1e3a6e;border-radius:10px 0 0 10px;padding:10px;max-width:190px;font-size:13px;z-index:5}
 footer{position:fixed;bottom:0;left:0;right:0;text-align:center;padding:12px;background:#080b13;color:#60a5fa;border-top:1px solid #1e3a6e}
+input.invalid{border-color:#ef4444!important;background:#2a1215}.msg{color:#f87171;font-size:13px;margin:0 0 4px 2px}
+.bad{border-color:#ef4444!important;background:#2a1215!important}

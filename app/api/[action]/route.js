@@ -28,9 +28,13 @@ export async function POST(req, { params }) {
       await sql`insert into used(old_paper,q_no,new_paper,new_q,by) values(${b.old_paper},${b.q_no},${b.new_paper},${b.new_q || null},${u.name})`; return ok();
     }
     if (a === 'add') {
-      await sql`insert into questions(old_paper,q_no,topic,flagged,added_by) values(${b.old_paper},${b.q_no},${b.topic},${!!b.bad},${u.name})
-        on conflict(old_paper,q_no) do update set topic=excluded.topic, flagged=questions.flagged or excluded.flagged`; return ok();
+      if (!(b.old_paper > 0) || !(b.q_no > 0) || !(b.topic || '').trim()) return err('Please fill all inputs');
+      const prev = await sql`select topic,added_by from questions where old_paper=${b.old_paper} and q_no=${b.q_no}`;
+      await sql`insert into questions(old_paper,q_no,topic,flagged,added_by) values(${b.old_paper},${b.q_no},${b.topic.trim()},${!!b.bad},${u.name})
+        on conflict(old_paper,q_no) do update set topic=excluded.topic, added_by=excluded.added_by, updated_at=now(), flagged=questions.flagged or excluded.flagged`;
+      return ok({ status: prev.length ? 'updated' : 'saved' });
     }
+    if (a === 'mine') return ok({ rows: await sql`select old_paper,q_no,topic,flagged from questions where added_by=${u.name} order by updated_at desc limit 5` });
     if (a === 'search') {
       const q = (b.topic || '').trim().toLowerCase(); if (!q) return ok({ same: [], near: [], taken: [] });
       let kws = q.split(/\s+/).filter(w => w.length > 2);
