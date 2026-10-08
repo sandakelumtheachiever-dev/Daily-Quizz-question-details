@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getUser, makeToken } from '@/lib/auth';
 import { gem, getModel, listModels } from '@/lib/gemini';
+const nm = t => (t || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+const key = r => nm(r.topic) || `o${r.old_paper}-${r.q_no}`;
+const rowsIn = (sql, lo, hi) => sql`select x.new_paper, x.new_q, x.old_paper, x.q_no, q.topic, q.lesson from used x left join questions q on q.old_paper=x.old_paper and q.q_no=x.q_no where x.new_paper between ${lo} and ${hi} order by x.new_paper, x.new_q nulls last, x.id`;
 const ok = (d = {}) => NextResponse.json(d);
 const err = (m, s = 400) => NextResponse.json({ error: m }, { status: s });
 
@@ -37,6 +40,24 @@ export async function POST(req, { params }) {
       if (!(b.existing_id > 0) || !(b.new_paper > 0)) return err('Missing numbers');
       await sql`insert into reports(old_paper,q_no,existing_id,p_paper,p_q,reported_by) values(${b.old_paper},${b.q_no},${b.existing_id},${b.new_paper},${b.new_q || null},${u.name})`; return ok();
     }
+    if (a === 'paper') return ok({ rows: await rowsIn(sql, b.paper, b.paper) });
+    if (a === 'recent') {
+      const ps = await sql`select distinct new_paper from used order by new_paper desc limit 3`;
+      if (!ps.length) return ok({ tables: [] });
+      const all = await rowsIn(sql, ps[ps.length - 1].new_paper, ps[0].new_paper);
+      return ok({ tables: ps.map(p => ({ paper: p.new_paper, rows: all.filter(r => r.new_paper === p.new_paper) })) });
+    }
+    if (a === 'compare') {
+      if (!(b.a > 0)) return err('Enter a paper number');
+      if (b.b > 0) {
+        const ra = await rowsIn(sql, b.a, b.a), rb = await rowsIn(sql, b.b, b.b);
+        const ma = new Map(ra.map(r => [key(r), r])), mb = new Map(rb.map(r => [key(r), r]));
+        return ok({ mode: 'two', a: { paper: b.a, rows: ra.map(r => ({ ...r, rep: mb.has(key(r)), with: mb.get(key(r))?.new_q })) }, b: { paper: b.b, rows: rb.map(r => ({ ...r, rep: ma.has(key(r)), with: ma.get(key(r))?.new_q })) } });
+      }
+      const lo = Math.max(1, b.a - 45), all = await rowsIn(sql, lo, b.a);
+      const others = all.filter(r => r.new_paper !== b.a);
+      return ok({ mode: 'window', paper: b.a, from: lo, rows: all.filter(r => r.new_paper === b.a).map(r => ({ ...r, matches: others.filter(o => key(o) === key(r)).map(o => ({ paper: o.new_paper, q: o.new_q })) })) });
+    }
     if (a === 'unmark') { await sql`delete from used where id=${b.id} and ("by"=${u.name} or ${u.role === 'admin'})`; return ok(); }
     if (a === 'add') {
       if (!(b.old_paper > 0) || !(b.q_no >= 1 && b.q_no <= 10) || !(b.topic || '').trim() || !b.lesson) return err('Please fill all inputs');
@@ -64,6 +85,19 @@ export async function POST(req, { params }) {
     }
     if (a === 'models') return ok({ models: await listModels(), current: await getModel() });
     if (a === 'setmodel') { await sql`insert into settings(k,v) values('model',${b.model}) on conflict(k) do update set v=excluded.v`; return ok(); }
+    const rowsOf = p => sql`select u.new_q,u.old_paper,u.q_no,q.topic,q.lesson from used u left join questions q on q.old_paper=u.old_paper and q.q_no=u.q_no where u.new_paper=${p} order by u.new_q nulls last, u.id`;
+    if (a === 'paper') return ok({ rows: await rowsOf(b.paper) });
+    if (a === 'recent') {
+      const ps = await sql`select new_paper from used group by new_paper order by max(id) desc limit 3`;
+      return ok({ papers: await Promise.all(ps.map(async x => ({ paper: x.new_paper, rows: await rowsOf(x.new_paper) }))) });
+    }
+    if (a === 'compare') {
+      const tot = await sql`select count(*)::int as c from used where new_paper=${b.paper}`;
+      const rr = await sql`select a.new_q, a.old_paper, a.q_no, q.topic, q.lesson, b.new_paper as bp, b.new_q as bq from used a join used b on b.old_paper=a.old_paper and b.q_no=a.q_no and b.new_paper<a.new_paper and b.new_paper>=a.new_paper-45 left join questions q on q.old_paper=a.old_paper and q.q_no=a.q_no where a.new_paper=${b.paper} order by a.new_q nulls last, b.new_paper desc`;
+      const g = new Map();
+      rr.forEach(r => { const k = r.old_paper + '-' + r.q_no; if (!g.has(k)) g.set(k, { new_q: r.new_q, old_paper: r.old_paper, q_no: r.q_no, topic: r.topic, lesson: r.lesson, hits: [] }); g.get(k).hits.push({ paper: r.bp, q: r.bq, gap: b.paper - r.bp }); });
+      return ok({ total: tot[0].c, rows: [...g.values()] });
+    }
     if (a === 'anchor') {
       const m = Object.fromEntries((await sql`select k,v from settings where k in ('anchor_paper','anchor_date')`).map(r => [r.k, r.v]));
       return ok({ paper: parseInt(m.anchor_paper || 346), date: m.anchor_date || '2026-10-08' });
