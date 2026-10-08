@@ -25,14 +25,15 @@ export async function POST(req, { params }) {
       return ok({ question: q[0] || null, used });
     }
     if (a === 'mark') {
-      if (!(b.old_paper > 0) || !(b.q_no > 0) || !(b.new_paper > 0)) return err('Please fill all numbers');
+      if (!(b.old_paper > 0) || !(b.new_paper > 0)) return err('Please fill all numbers');
+      if (!(b.q_no >= 1 && b.q_no <= 10) || (b.new_q && !(b.new_q >= 1 && b.new_q <= 10))) return err('Question number must be 1 to 10');
       if (b.id) { await sql`update used set old_paper=${b.old_paper}, q_no=${b.q_no}, new_paper=${b.new_paper}, new_q=${b.new_q || null} where id=${b.id} and ("by"=${u.name} or ${u.role === 'admin'})`; return ok({ status: 'updated' }); }
       await sql`insert into used(old_paper,q_no,new_paper,new_q,"by") values(${b.old_paper},${b.q_no},${b.new_paper},${b.new_q || null},${u.name})`; return ok({ status: 'saved' });
     }
     if (a === 'mymarks') return ok({ rows: await sql`select id,old_paper,q_no,new_paper,new_q from used where "by"=${u.name} order by id desc limit 5` });
     if (a === 'unmark') { await sql`delete from used where id=${b.id} and ("by"=${u.name} or ${u.role === 'admin'})`; return ok(); }
     if (a === 'add') {
-      if (!(b.old_paper > 0) || !(b.q_no > 0) || !(b.topic || '').trim() || !b.lesson) return err('Please fill all inputs');
+      if (!(b.old_paper > 0) || !(b.q_no >= 1 && b.q_no <= 10) || !(b.topic || '').trim() || !b.lesson) return err('Please fill all inputs');
       const prev = await sql`select topic,added_by from questions where old_paper=${b.old_paper} and q_no=${b.q_no}`;
       await sql`insert into questions(old_paper,q_no,topic,lesson,flagged,added_by) values(${b.old_paper},${b.q_no},${b.topic.trim()},${b.lesson},${!!b.bad},${u.name})
         on conflict(old_paper,q_no) do update set topic=excluded.topic, lesson=excluded.lesson, added_by=excluded.added_by, updated_at=now(), flagged=questions.flagged or excluded.flagged`;

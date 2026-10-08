@@ -48,6 +48,7 @@ function Login({ done }) {
 const LESSONS = ['Lesson 1', 'Lesson 2', 'NS', 'LG', 'OS', 'Networking', 'System', 'Database', 'Python', 'Web', 'IOT', 'E-commerce', 'New trends'];
 const Lesson = ({ v, set, e, ph }) => <select className={e ? 'bad' : ''} value={v} onChange={x => set(x.target.value)}><option value="">{ph}</option>{LESSONS.map(l => <option key={l}>{l}</option>)}</select>;
 const inv = v => !(n(v) > 0);
+const invQ = v => !(n(v) >= 1 && n(v) <= 10);
 const cls = e => (e ? 'bad' : '');
 const Msg = ({ s, children }) => s ? <div className="err">{children}</div> : null;
 
@@ -57,9 +58,9 @@ function Check() {
   const loadMarks = async () => setMarks((await api('mymarks')).rows || []);
   useEffect(() => { loadMarks(); }, []);
   const reset = () => { setP(''); setQ(''); setNp(''); setNq(''); setR(null); setEditId(null); setE1(false); setE2(false); };
-  const go = async () => { if (inv(p) || inv(q)) { setE1(true); return; } setE1(false); setM(''); setR(await api('check', { old_paper: n(p), q_no: n(q) })); };
+  const go = async () => { if (inv(p) || invQ(q)) { setE1(true); return; } setE1(false); setM(''); setR(await api('check', { old_paper: n(p), q_no: n(q) })); };
   const mark = async () => {
-    if (inv(p) || inv(q) || inv(np)) { setE2(true); return; } setE2(false);
+    if (inv(p) || invQ(q) || inv(np) || (nq && invQ(nq))) { setE2(true); return; } setE2(false);
     const x = await api('mark', { id: editId, old_paper: n(p), q_no: n(q), new_paper: n(np), new_q: n(nq) });
     if (!x.ok) { setM(x.error); return; }
     reset(); setM(x.status === 'updated' ? 'Updated ✅' : 'Saved ✅'); loadMarks();
@@ -67,14 +68,14 @@ function Check() {
   const edit = x => { setP(String(x.old_paper)); setQ(String(x.q_no)); setNp(String(x.new_paper)); setNq(x.new_q ? String(x.new_q) : ''); setEditId(x.id); setR(null); setM(''); setE1(false); setE2(false); };
   const del = async () => { if (!confirm('Delete this entry?')) return; await api('unmark', { id: editId }); reset(); setM('Deleted ✅'); loadMarks(); };
   return <><div className="card"><h3>Is this old question already used in 2027?</h3>
-    <input className={cls(e1 && inv(p))} placeholder="2026 quiz no" value={p} onChange={x => setP(x.target.value)} /><input className={cls(e1 && inv(q))} placeholder="Question no" value={q} onChange={x => setQ(x.target.value)} onKeyDown={x => x.key === 'Enter' && go()} /><button onClick={go}>Check</button>
-    <Msg s={e1}>Enter the quiz number and question number</Msg>
+    <input className={cls(e1 && inv(p))} placeholder="2026 quiz no" value={p} onChange={x => setP(x.target.value)} /><input className={cls(e1 && invQ(q))} placeholder="Question no" value={q} onChange={x => setQ(x.target.value)} onKeyDown={x => x.key === 'Enter' && go()} /><button onClick={go}>Check</button>
+    <Msg s={e1}>Enter the quiz number and a question number from 1 to 10</Msg>
     {r && <>
       {r.question && <div className="card">{r.question.lesson && <b>[{r.question.lesson}] </b>}Topic: {r.question.topic} {r.question.tag && <span className="tag">⚠ {r.question.tag}</span>}</div>}
       {r.used.length ? r.used.map((u, i) => <div key={i} className="note">Taken for the 2027 quiz {u.new_paper}{u.new_q ? ` Q${u.new_q}` : ''} — {dm(u.new_paper)}</div>) : <div className="note">Not used yet ✅</div>}</>}
-    {(r || editId) && <><hr /><b>{editId ? 'Editing a saved entry:' : 'Mark as taken:'}</b><br /><input className={cls(e2 && inv(np))} placeholder="2027 quiz no" value={np} onChange={x => setNp(x.target.value)} /><input placeholder="2027 Q no" value={nq} onChange={x => setNq(x.target.value)} /><button onClick={mark}>{editId ? 'Update' : 'Save'}</button>
+    {(r || editId) && <><hr /><b>{editId ? 'Editing a saved entry:' : 'Mark as taken:'}</b><br /><input className={cls(e2 && inv(np))} placeholder="2027 quiz no" value={np} onChange={x => setNp(x.target.value)} /><input className={cls(e2 && nq && invQ(nq))} placeholder="2027 Q no" value={nq} onChange={x => setNq(x.target.value)} /><button onClick={mark}>{editId ? 'Update' : 'Save'}</button>
       {editId && <><button className="t" onClick={reset}>Cancel</button><button className="t" onClick={del}>Delete</button></>}
-      <Msg s={e2}>Enter the 2026 quiz, question and 2027 quiz numbers</Msg></>}
+      <Msg s={e2}>Enter the 2026 quiz no, a question no (1 to 10) and the 2027 quiz no</Msg></>}
   </div>
   {m && <div className="note">{m}</div>}
   {marks.length > 0 && <div className="card"><b>Your last marked (click one to edit)</b><br />{marks.map(x => <button key={x.id} className="t" onClick={() => edit(x)}>2026 Quiz no {x.old_paper} Que {x.q_no} → 2027 Quiz no {x.new_paper}{x.new_q ? ` Que ${x.new_q}` : ''}</button>)}</div>}</>;
@@ -105,18 +106,18 @@ function Add({ user }) {
   useEffect(() => { loadMine(); }, []);
   useEffect(() => { setNote(null); if (n(p) > 0 && n(q) > 0) api('check', { old_paper: n(p), q_no: n(q) }).then(r => setNote(r.question)); }, [p, q]);
   const go = async () => {
-    if (inv(p) || inv(q) || !t.trim() || !lesson) { setEr(true); setM(null); return; } setEr(false);
+    if (inv(p) || invQ(q) || !t.trim() || !lesson) { setEr(true); setM(null); return; } setEr(false);
     if (note && note.added_by !== user.name && !confirm(`User ${note.added_by} already put the topic "${note.topic}" to this question. Replace it?`)) return;
     const r = await api('add', { old_paper: n(p), q_no: n(q), topic: t, lesson, bad });
     if (!r.ok) { setM({ e: 1, s: r.error }); return; }
-    setM({ s: r.status === 'updated' ? 'Updated ✅' : 'Saved ✅' }); setQ(String(n(q) + 1)); setT(''); setBad(false); loadMine();
+    setM({ s: r.status === 'updated' ? 'Updated ✅' : 'Saved ✅' }); setQ(n(q) < 10 ? String(n(q) + 1) : ''); setT(''); setBad(false); loadMine();
   };
   return <div className="card"><h3>Add topic of an old question</h3>
-    <input className={cls(er && inv(p))} placeholder="2026 quiz no" value={p} onChange={x => setP(x.target.value)} /><input className={cls(er && inv(q))} placeholder="Question no" value={q} onChange={x => setQ(x.target.value)} /><Lesson v={lesson} set={setL} e={er && !lesson} ph="Lesson…" /><br />
+    <input className={cls(er && inv(p))} placeholder="2026 quiz no" value={p} onChange={x => setP(x.target.value)} /><input className={cls(er && invQ(q))} placeholder="Question no" value={q} onChange={x => setQ(x.target.value)} /><Lesson v={lesson} set={setL} e={er && !lesson} ph="Lesson…" /><br />
     {note && <div className="note">ℹ {note.added_by === user.name ? 'You' : `User ${note.added_by}`} already put the topic to this question: "{note.topic}"</div>}
     <input className={cls(er && !t.trim())} style={{ width: '90%' }} placeholder="Topic" value={t} onChange={x => setT(x.target.value)} onKeyDown={x => x.key === 'Enter' && go()} /><br />
     <label><input type="checkbox" checked={bad} onChange={x => setBad(x.target.checked)} /> This is a bad question</label><br />
-    <Msg s={er}>Enter {[inv(p) && 'the quiz number', inv(q) && 'the question number', !t.trim() && 'the topic', !lesson && 'the lesson'].filter(Boolean).join(', ')}</Msg>
+    <Msg s={er}>Enter {[inv(p) && 'the quiz number', invQ(q) && 'a question number (1 to 10)', !t.trim() && 'the topic', !lesson && 'the lesson'].filter(Boolean).join(', ')}</Msg>
     <button onClick={go}>Save</button> {m && <span className={m.e ? 'err' : 'note'}>{m.s}</span>}
     {mine.length > 0 && <><h3>Your last added</h3>{mine.map(r => <div className="card" key={r.old_paper + '-' + r.q_no}>Quiz {r.old_paper} · Q{r.q_no} — {r.lesson && <b>[{r.lesson}] </b>}{r.topic} <button className="t" onClick={() => { setP(String(r.old_paper)); setQ(String(r.q_no)); setT(r.topic); setL(r.lesson || ''); setBad(false); setM(null); }}>Edit</button></div>)}</>}
   </div>;
