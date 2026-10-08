@@ -37,6 +37,8 @@ function Login({ done }) {
     <In v={password} set={setP} ph="Password" tried={tr} onEnter={go} /><button onClick={go}>Enter</button><div className="err">{e}</div></div>;
 }
 
+const LESSONS = ['Lesson 1', 'Lesson 2', 'NS', 'LG', 'OS', 'Networking', 'System', 'Database', 'Python', 'Web', 'IOT', 'E-commerce', 'New trends'];
+const Lesson = ({ v, set, e, ph }) => <select className={e ? 'bad' : ''} value={v} onChange={x => set(x.target.value)}><option value="">{ph}</option>{LESSONS.map(l => <option key={l}>{l}</option>)}</select>;
 const inv = v => !(n(v) > 0);
 const cls = e => (e ? 'bad' : '');
 const Msg = ({ s, children }) => s ? <div className="err">{children}</div> : null;
@@ -50,7 +52,7 @@ function Check() {
     <input className={cls(e1 && inv(p))} placeholder="2026 quiz no" value={p} onChange={x => setP(x.target.value)} /><input className={cls(e1 && inv(q))} placeholder="Question no" value={q} onChange={x => setQ(x.target.value)} onKeyDown={x => x.key === 'Enter' && go()} /><button onClick={go}>Check</button>
     <Msg s={e1}>Enter the quiz number and question number</Msg>
     {r && <>
-      {r.question && <div className="card">Topic: {r.question.topic} {r.question.tag && <span className="tag">⚠ {r.question.tag}</span>}</div>}
+      {r.question && <div className="card">{r.question.lesson && <b>[{r.question.lesson}] </b>}Topic: {r.question.topic} {r.question.tag && <span className="tag">⚠ {r.question.tag}</span>}</div>}
       {r.used.length ? r.used.map((u, i) => <div key={i} className="note">Taken for the 2027 quiz {u.new_paper}{u.new_q ? ` Q${u.new_q}` : ''} — {dm(u.new_paper)}</div>) : <div className="note">Not used yet ✅</div>}
       <hr /><b>Mark as taken:</b><br /><input className={cls(e2)} placeholder="2027 quiz no" value={np} onChange={x => setNp(x.target.value)} /><input placeholder="2027 Q no" value={nq} onChange={x => setNq(x.target.value)} /><button onClick={mark}>Save</button>
       <Msg s={e2}>Enter the 2027 quiz number</Msg><span className="note"> {m}</span></>}
@@ -58,16 +60,16 @@ function Check() {
 }
 
 function Row({ r, mark }) {
-  return <div className="card">2026 Quiz {r.old_paper} · Q{r.q_no} — {r.topic} {r.tag && <span className="tag">⚠ {r.tag}</span>}
+  return <div className="card">2026 Quiz {r.old_paper} · Q{r.q_no} — {r.lesson && <b>[{r.lesson}] </b>}{r.topic} {r.tag && <span className="tag">⚠ {r.tag}</span>}
     {r.used.map((u, i) => <div key={i} className="note">Used again in 2027 quiz {u.p}{u.q ? ` Q${u.q}` : ''} — {dm(u.p)}</div>)}
     {mark && <div><button onClick={async () => { const p = prompt('2027 quiz number?'); if (p) { await api('mark', { old_paper: r.old_paper, q_no: r.q_no, new_paper: n(p) }); alert('Saved'); } }}>Mark taken</button></div>}</div>;
 }
 
 function Find() {
-  const [t, setT] = useState(''), [r, setR] = useState(null), [busy, setB] = useState(false), [er, setEr] = useState(false);
-  const go = async () => { if (!t.trim()) { setEr(true); return; } setEr(false); setB(true); setR(await api('search', { topic: t })); setB(false); };
-  return <div className="card"><h3>Find questions by topic</h3><input className={cls(er)} style={{ width: '70%' }} placeholder="e.g. K-map to S.O.P." value={t} onChange={x => setT(x.target.value)} onKeyDown={x => x.key === 'Enter' && go()} /><button onClick={go}>{busy ? '...' : 'Search'}</button>
-    <Msg s={er}>Enter a topic to search</Msg>
+  const [t, setT] = useState(''), [r, setR] = useState(null), [busy, setB] = useState(false), [er, setEr] = useState(false), [lesson, setL] = useState('');
+  const go = async () => { if (!t.trim() && !lesson) { setEr(true); return; } setEr(false); setB(true); setR(await api('search', { topic: t, lesson })); setB(false); };
+  return <div className="card"><h3>Find questions by topic</h3><Lesson v={lesson} set={setL} ph="Any lesson" /><input className={cls(er)} style={{ width: '70%' }} placeholder="e.g. K-map to S.O.P." value={t} onChange={x => setT(x.target.value)} onKeyDown={x => x.key === 'Enter' && go()} /><button onClick={go}>{busy ? '...' : 'Search'}</button>
+    <Msg s={er}>Enter a topic or choose a lesson</Msg>
     {r?.error && <div className="err">{r.error}</div>}
     {r?.same && <><h3>Same topic ({r.same.length})</h3>{r.same.map(x => <Row key={x.old_paper + '-' + x.q_no} r={x} mark />)}
       <h3>Near topics ({r.near.length})</h3>{r.near.map(x => <Row key={x.old_paper + '-' + x.q_no} r={x} mark />)}
@@ -76,26 +78,26 @@ function Find() {
 }
 
 function Add({ user }) {
-  const [p, setP] = useState(''), [q, setQ] = useState(''), [t, setT] = useState(''), [bad, setBad] = useState(false);
+  const [p, setP] = useState(''), [q, setQ] = useState(''), [t, setT] = useState(''), [bad, setBad] = useState(false), [lesson, setL] = useState('');
   const [m, setM] = useState(null), [er, setEr] = useState(false), [note, setNote] = useState(null), [mine, setMine] = useState([]);
   const loadMine = async () => setMine((await api('mine')).rows || []);
   useEffect(() => { loadMine(); }, []);
   useEffect(() => { setNote(null); if (n(p) > 0 && n(q) > 0) api('check', { old_paper: n(p), q_no: n(q) }).then(r => setNote(r.question)); }, [p, q]);
   const go = async () => {
-    if (inv(p) || inv(q) || !t.trim()) { setEr(true); setM(null); return; } setEr(false);
+    if (inv(p) || inv(q) || !t.trim() || !lesson) { setEr(true); setM(null); return; } setEr(false);
     if (note && note.added_by !== user.name && !confirm(`User ${note.added_by} already put the topic "${note.topic}" to this question. Replace it?`)) return;
-    const r = await api('add', { old_paper: n(p), q_no: n(q), topic: t, bad });
+    const r = await api('add', { old_paper: n(p), q_no: n(q), topic: t, lesson, bad });
     if (!r.ok) { setM({ e: 1, s: r.error }); return; }
     setM({ s: r.status === 'updated' ? 'Updated ✅' : 'Saved ✅' }); setQ(String(n(q) + 1)); setT(''); setBad(false); loadMine();
   };
   return <div className="card"><h3>Add topic of an old question</h3>
-    <input className={cls(er && inv(p))} placeholder="2026 quiz no" value={p} onChange={x => setP(x.target.value)} /><input className={cls(er && inv(q))} placeholder="Question no" value={q} onChange={x => setQ(x.target.value)} /><br />
+    <input className={cls(er && inv(p))} placeholder="2026 quiz no" value={p} onChange={x => setP(x.target.value)} /><input className={cls(er && inv(q))} placeholder="Question no" value={q} onChange={x => setQ(x.target.value)} /><Lesson v={lesson} set={setL} e={er && !lesson} ph="Lesson…" /><br />
     {note && <div className="note">ℹ {note.added_by === user.name ? 'You' : `User ${note.added_by}`} already put the topic to this question: "{note.topic}"</div>}
     <input className={cls(er && !t.trim())} style={{ width: '90%' }} placeholder="Topic" value={t} onChange={x => setT(x.target.value)} onKeyDown={x => x.key === 'Enter' && go()} /><br />
     <label><input type="checkbox" checked={bad} onChange={x => setBad(x.target.checked)} /> This is a bad question</label><br />
-    <Msg s={er}>Enter {[inv(p) && 'the quiz number', inv(q) && 'the question number', !t.trim() && 'the topic'].filter(Boolean).join(', ')}</Msg>
+    <Msg s={er}>Enter {[inv(p) && 'the quiz number', inv(q) && 'the question number', !t.trim() && 'the topic', !lesson && 'the lesson'].filter(Boolean).join(', ')}</Msg>
     <button onClick={go}>Save</button> {m && <span className={m.e ? 'err' : 'note'}>{m.s}</span>}
-    {mine.length > 0 && <><h3>Your last added</h3>{mine.map(r => <div className="card" key={r.old_paper + '-' + r.q_no}>Quiz {r.old_paper} · Q{r.q_no} — {r.topic} <button className="t" onClick={() => { setP(String(r.old_paper)); setQ(String(r.q_no)); setT(r.topic); setBad(false); setM(null); }}>Edit</button></div>)}</>}
+    {mine.length > 0 && <><h3>Your last added</h3>{mine.map(r => <div className="card" key={r.old_paper + '-' + r.q_no}>Quiz {r.old_paper} · Q{r.q_no} — {r.lesson && <b>[{r.lesson}] </b>}{r.topic} <button className="t" onClick={() => { setP(String(r.old_paper)); setQ(String(r.q_no)); setT(r.topic); setL(r.lesson || ''); setBad(false); setM(null); }}>Edit</button></div>)}</>}
   </div>;
 }
 

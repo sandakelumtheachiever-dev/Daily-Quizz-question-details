@@ -28,18 +28,22 @@ export async function POST(req, { params }) {
       await sql`insert into used(old_paper,q_no,new_paper,new_q,by) values(${b.old_paper},${b.q_no},${b.new_paper},${b.new_q || null},${u.name})`; return ok();
     }
     if (a === 'add') {
-      if (!(b.old_paper > 0) || !(b.q_no > 0) || !(b.topic || '').trim()) return err('Please fill all inputs');
+      if (!(b.old_paper > 0) || !(b.q_no > 0) || !(b.topic || '').trim() || !b.lesson) return err('Please fill all inputs');
       const prev = await sql`select topic,added_by from questions where old_paper=${b.old_paper} and q_no=${b.q_no}`;
-      await sql`insert into questions(old_paper,q_no,topic,flagged,added_by) values(${b.old_paper},${b.q_no},${b.topic.trim()},${!!b.bad},${u.name})
-        on conflict(old_paper,q_no) do update set topic=excluded.topic, added_by=excluded.added_by, updated_at=now(), flagged=questions.flagged or excluded.flagged`;
+      await sql`insert into questions(old_paper,q_no,topic,lesson,flagged,added_by) values(${b.old_paper},${b.q_no},${b.topic.trim()},${b.lesson},${!!b.bad},${u.name})
+        on conflict(old_paper,q_no) do update set topic=excluded.topic, lesson=excluded.lesson, added_by=excluded.added_by, updated_at=now(), flagged=questions.flagged or excluded.flagged`;
       return ok({ status: prev.length ? 'updated' : 'saved' });
     }
-    if (a === 'mine') return ok({ rows: await sql`select old_paper,q_no,topic,flagged from questions where added_by=${u.name} order by updated_at desc limit 5` });
+    if (a === 'mine') return ok({ rows: await sql`select old_paper,q_no,topic,lesson,flagged from questions where added_by=${u.name} order by updated_at desc limit 5` });
     if (a === 'search') {
-      const q = (b.topic || '').trim().toLowerCase(); if (!q) return ok({ same: [], near: [], taken: [] });
+      const q = (b.topic || '').trim().toLowerCase(); if (!q && !b.lesson) return ok({ same: [], near: [], taken: [] });
+      if (!q) {
+        const all = await sql`select q.*, coalesce((select json_agg(json_build_object('p',new_paper,'q',new_q)) from used x where x.old_paper=q.old_paper and x.q_no=q.q_no),'[]') as used from questions q where lesson=${b.lesson} order by old_paper,q_no limit 500`;
+        return ok({ same: all.filter(r => !r.used.length), near: [], taken: all.filter(r => r.used.length) });
+      }
       let kws = q.split(/\s+/).filter(w => w.length > 2);
       try { const k = await gem(`Exam topic: "${q}". Return JSON {"keywords":[up to 12 short lowercase keywords/synonyms/abbreviations a similar quiz topic might contain]}`); kws = [...new Set([...kws, ...k.keywords.map(x => String(x).toLowerCase())])]; } catch (e) {}
-      const rows = await sql.query(`select q.*, coalesce((select json_agg(json_build_object('p',new_paper,'q',new_q)) from used x where x.old_paper=q.old_paper and x.q_no=q.q_no),'[]') as used from questions q where lower(topic) like any($1) limit 200`, [kws.map(k => `%${k}%`)]);
+      const rows = await sql.query(`select q.*, coalesce((select json_agg(json_build_object('p',new_paper,'q',new_q)) from used x where x.old_paper=q.old_paper and x.q_no=q.q_no),'[]') as used from questions q where lower(topic) like any($1) and ($2::text is null or lesson=$2) limit 200`, [kws.map(k => `%${k}%`), b.lesson || null]);
       let same = new Set();
       if (rows.length) try { const r = await gem(`User wants questions on: "${q}". Candidates: ${JSON.stringify(rows.map((r, i) => [i, r.topic]))}. Return JSON {"same":[indexes of candidates that are essentially the SAME topic]}`); same = new Set(r.same); } catch (e) { rows.forEach((r, i) => r.topic.toLowerCase().includes(q) && same.add(i)); }
       const sc = r => kws.filter(k => r.topic.toLowerCase().includes(k)).length;
