@@ -53,18 +53,31 @@ const Msg = ({ s, children }) => s ? <div className="err">{children}</div> : nul
 
 function Check() {
   const [p, setP] = useState(''), [q, setQ] = useState(''), [r, setR] = useState(null), [np, setNp] = useState(''), [nq, setNq] = useState('');
-  const [e1, setE1] = useState(false), [e2, setE2] = useState(false), [m, setM] = useState('');
-  const go = async () => { if (inv(p) || inv(q)) { setE1(true); return; } setE1(false); setR(await api('check', { old_paper: n(p), q_no: n(q) })); };
-  const mark = async () => { if (inv(np)) { setE2(true); return; } setE2(false); await api('mark', { old_paper: n(p), q_no: n(q), new_paper: n(np), new_q: n(nq) }); setM('Saved ✅'); go(); };
-  return <div className="card"><h3>Is this old question already used in 2027?</h3>
+  const [e1, setE1] = useState(false), [e2, setE2] = useState(false), [m, setM] = useState(''), [marks, setMarks] = useState([]), [editId, setEditId] = useState(null);
+  const loadMarks = async () => setMarks((await api('mymarks')).rows || []);
+  useEffect(() => { loadMarks(); }, []);
+  const reset = () => { setP(''); setQ(''); setNp(''); setNq(''); setR(null); setEditId(null); setE1(false); setE2(false); };
+  const go = async () => { if (inv(p) || inv(q)) { setE1(true); return; } setE1(false); setM(''); setR(await api('check', { old_paper: n(p), q_no: n(q) })); };
+  const mark = async () => {
+    if (inv(p) || inv(q) || inv(np)) { setE2(true); return; } setE2(false);
+    const x = await api('mark', { id: editId, old_paper: n(p), q_no: n(q), new_paper: n(np), new_q: n(nq) });
+    if (!x.ok) { setM(x.error); return; }
+    reset(); setM(x.status === 'updated' ? 'Updated ✅' : 'Saved ✅'); loadMarks();
+  };
+  const edit = x => { setP(String(x.old_paper)); setQ(String(x.q_no)); setNp(String(x.new_paper)); setNq(x.new_q ? String(x.new_q) : ''); setEditId(x.id); setR(null); setM(''); setE1(false); setE2(false); };
+  const del = async () => { if (!confirm('Delete this entry?')) return; await api('unmark', { id: editId }); reset(); setM('Deleted ✅'); loadMarks(); };
+  return <><div className="card"><h3>Is this old question already used in 2027?</h3>
     <input className={cls(e1 && inv(p))} placeholder="2026 quiz no" value={p} onChange={x => setP(x.target.value)} /><input className={cls(e1 && inv(q))} placeholder="Question no" value={q} onChange={x => setQ(x.target.value)} onKeyDown={x => x.key === 'Enter' && go()} /><button onClick={go}>Check</button>
     <Msg s={e1}>Enter the quiz number and question number</Msg>
     {r && <>
       {r.question && <div className="card">{r.question.lesson && <b>[{r.question.lesson}] </b>}Topic: {r.question.topic} {r.question.tag && <span className="tag">⚠ {r.question.tag}</span>}</div>}
-      {r.used.length ? r.used.map((u, i) => <div key={i} className="note">Taken for the 2027 quiz {u.new_paper}{u.new_q ? ` Q${u.new_q}` : ''} — {dm(u.new_paper)}</div>) : <div className="note">Not used yet ✅</div>}
-      <hr /><b>Mark as taken:</b><br /><input className={cls(e2)} placeholder="2027 quiz no" value={np} onChange={x => setNp(x.target.value)} /><input placeholder="2027 Q no" value={nq} onChange={x => setNq(x.target.value)} /><button onClick={mark}>Save</button>
-      <Msg s={e2}>Enter the 2027 quiz number</Msg><span className="note"> {m}</span></>}
-  </div>;
+      {r.used.length ? r.used.map((u, i) => <div key={i} className="note">Taken for the 2027 quiz {u.new_paper}{u.new_q ? ` Q${u.new_q}` : ''} — {dm(u.new_paper)}</div>) : <div className="note">Not used yet ✅</div>}</>}
+    {(r || editId) && <><hr /><b>{editId ? 'Editing a saved entry:' : 'Mark as taken:'}</b><br /><input className={cls(e2 && inv(np))} placeholder="2027 quiz no" value={np} onChange={x => setNp(x.target.value)} /><input placeholder="2027 Q no" value={nq} onChange={x => setNq(x.target.value)} /><button onClick={mark}>{editId ? 'Update' : 'Save'}</button>
+      {editId && <><button className="t" onClick={reset}>Cancel</button><button className="t" onClick={del}>Delete</button></>}
+      <Msg s={e2}>Enter the 2026 quiz, question and 2027 quiz numbers</Msg></>}
+  </div>
+  {m && <div className="note">{m}</div>}
+  {marks.length > 0 && <div className="card"><b>Your last marked (click one to edit)</b><br />{marks.map(x => <button key={x.id} className="t" onClick={() => edit(x)}>2026 Quiz no {x.old_paper} Que {x.q_no} → 2027 Quiz no {x.new_paper}{x.new_q ? ` Que ${x.new_q}` : ''}</button>)}</div>}</>;
 }
 
 function Row({ r, mark }) {
