@@ -1,7 +1,14 @@
 'use client';
 import { useState, useEffect } from 'react';
 const api = async (a, b = {}) => { const r = await fetch('/api/' + a, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }); return { ok: r.ok, ...(await r.json()) }; };
-const dm = n => `day ${n} (month ${Math.ceil(n / 30)})`;
+let A = { paper: 346, date: '2026-10-08' };
+const dm = n => {
+  const [y, m, d] = A.date.split('-').map(Number), t = new Date();
+  const dt = Date.UTC(y, m - 1, d) + (n - A.paper) * 864e5, td = Date.UTC(t.getFullYear(), t.getMonth(), t.getDate());
+  const diff = Math.round((dt - td) / 864e5);
+  const rel = diff === 0 ? 'today' : diff < 0 ? `${-diff} day${diff === -1 ? '' : 's'} ago` : `in ${diff} day${diff === 1 ? '' : 's'}`;
+  return `${new Date(dt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })} · ${rel}`;
+};
 const n = v => parseInt(v);
 function In({ v, set, ph, tried, num, style, onEnter }) {
   const empty = !String(v).trim(), badNum = num && !empty && !(n(v) > 0);
@@ -14,8 +21,9 @@ const okNum = v => n(v) > 0;
 
 
 export default function Home() {
-  const [user, setUser] = useState(null), [ready, setReady] = useState(false), [tab, setTab] = useState('check');
+  const [user, setUser] = useState(null), [ready, setReady] = useState(false), [tab, setTab] = useState('check'), [, tick] = useState(0);
   useEffect(() => { api('me').then(r => { setUser(r.user); setReady(true); }); }, []);
+  useEffect(() => { if (user) api('anchor').then(r => { if (r.paper) { A = { paper: r.paper, date: r.date }; tick(x => x + 1); } }); }, [user]);
   if (!ready) return null;
   return <main>
     <h1>Quiz Bank 2026 → 2027</h1>
@@ -105,7 +113,10 @@ function Admin() {
   const [rows, setRows] = useState([]); const load = async () => setRows((await api('queue')).rows || []); useEffect(() => { load(); }, []);
   const tag = async (r) => { const t = prompt('Tag text', 'Not good to use'); if (t) { await api('tag', { old_paper: r.old_paper, q_no: r.q_no, tag: t }); load(); } };
   const dismiss = async (r) => { await api('tag', { old_paper: r.old_paper, q_no: r.q_no, tag: null }); load(); };
-  return <div className="card"><h3>Reported bad questions ({rows.length})</h3>{rows.map(r => <div className="card" key={r.old_paper + '-' + r.q_no}>Quiz {r.old_paper} Q{r.q_no} — {r.topic} (by {r.added_by})<br /><button onClick={() => tag(r)}>Add tag</button><button className="t" onClick={() => dismiss(r)}>Dismiss</button></div>)}</div>;
+  const [ap, setAp] = useState(String(A.paper)), [ad, setAd] = useState(A.date), [am, setAm] = useState('');
+  const saveA = async () => { const r = await api('setanchor', { paper: n(ap), date: ad }); if (r.ok) { A = { paper: n(ap), date: ad }; setAm('Saved ✅'); } else setAm(r.error); };
+  return <div className="card"><h3>Series date setting</h3>2027 quiz no <input style={{ width: 90 }} value={ap} onChange={x => setAp(x.target.value)} /> is published on <input type="date" value={ad} onChange={x => setAd(x.target.value)} /><button onClick={saveA}>Save</button> <span className="note">{am}</span>
+    <h3>Reported bad questions ({rows.length})</h3>{rows.map(r => <div className="card" key={r.old_paper + '-' + r.q_no}>Quiz {r.old_paper} Q{r.q_no} — {r.topic} (by {r.added_by})<br /><button onClick={() => tag(r)}>Add tag</button><button className="t" onClick={() => dismiss(r)}>Dismiss</button></div>)}</div>;
 }
 
 function Models() {

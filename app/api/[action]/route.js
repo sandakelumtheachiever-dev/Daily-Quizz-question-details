@@ -53,7 +53,16 @@ export async function POST(req, { params }) {
     }
     if (a === 'models') return ok({ models: await listModels(), current: await getModel() });
     if (a === 'setmodel') { await sql`insert into settings(k,v) values('model',${b.model}) on conflict(k) do update set v=excluded.v`; return ok(); }
+    if (a === 'anchor') {
+      const m = Object.fromEntries((await sql`select k,v from settings where k in ('anchor_paper','anchor_date')`).map(r => [r.k, r.v]));
+      return ok({ paper: parseInt(m.anchor_paper || 346), date: m.anchor_date || '2026-10-08' });
+    }
     if (u.role !== 'admin') return err('Admins only', 403);
+    if (a === 'setanchor') {
+      if (!(b.paper > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(b.date || '')) return err('Enter a quiz number and a date');
+      await sql`insert into settings(k,v) values('anchor_paper',${String(b.paper)}) on conflict(k) do update set v=excluded.v`;
+      await sql`insert into settings(k,v) values('anchor_date',${b.date}) on conflict(k) do update set v=excluded.v`; return ok();
+    }
     if (a === 'queue') return ok({ rows: await sql`select * from questions where flagged and tag is null order by old_paper,q_no` });
     if (a === 'tag') { await sql`update questions set tag=${b.tag || null}, flagged=false where old_paper=${b.old_paper} and q_no=${b.q_no}`; return ok(); }
   } catch (e) { return err(e.message, 500); }
