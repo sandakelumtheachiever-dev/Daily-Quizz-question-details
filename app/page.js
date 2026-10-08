@@ -7,7 +7,7 @@ const dm = n => {
   const dt = Date.UTC(y, m - 1, d) + (n - A.paper) * 864e5, td = Date.UTC(t.getFullYear(), t.getMonth(), t.getDate());
   const diff = Math.round((dt - td) / 864e5);
   const rel = diff === 0 ? 'today' : diff < 0 ? `${-diff} day${diff === -1 ? '' : 's'} ago` : `in ${diff} day${diff === 1 ? '' : 's'}`;
-  return `${new Date(dt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })} · ${rel}`;
+  return <>{new Date(dt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })} · <span className={diff > -60 ? 'hl' : ''}>{rel}</span></>;
 };
 const n = v => parseInt(v);
 function In({ v, set, ph, tried, num, style, onEnter }) {
