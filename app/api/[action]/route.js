@@ -27,10 +27,16 @@ export async function POST(req, { params }) {
     if (a === 'mark') {
       if (!(b.old_paper > 0) || !(b.new_paper > 0)) return err('Please fill all numbers');
       if (!(b.q_no >= 1 && b.q_no <= 10) || (b.new_q && !(b.new_q >= 1 && b.new_q <= 10))) return err('Question number must be 1 to 10');
+      const ex = await sql`select id,new_paper,new_q,"by" from used where old_paper=${b.old_paper} and q_no=${b.q_no} and id <> ${b.id || 0} order by id`;
+      if (ex.length) return ok({ conflict: true, existing: ex });
       if (b.id) { await sql`update used set old_paper=${b.old_paper}, q_no=${b.q_no}, new_paper=${b.new_paper}, new_q=${b.new_q || null} where id=${b.id} and ("by"=${u.name} or ${u.role === 'admin'})`; return ok({ status: 'updated' }); }
       await sql`insert into used(old_paper,q_no,new_paper,new_q,"by") values(${b.old_paper},${b.q_no},${b.new_paper},${b.new_q || null},${u.name})`; return ok({ status: 'saved' });
     }
     if (a === 'mymarks') return ok({ rows: await sql`select id,old_paper,q_no,new_paper,new_q from used where "by"=${u.name} order by id desc limit 5` });
+    if (a === 'report') {
+      if (!(b.existing_id > 0) || !(b.new_paper > 0)) return err('Missing numbers');
+      await sql`insert into reports(old_paper,q_no,existing_id,p_paper,p_q,reported_by) values(${b.old_paper},${b.q_no},${b.existing_id},${b.new_paper},${b.new_q || null},${u.name})`; return ok();
+    }
     if (a === 'unmark') { await sql`delete from used where id=${b.id} and ("by"=${u.name} or ${u.role === 'admin'})`; return ok(); }
     if (a === 'add') {
       if (!(b.old_paper > 0) || !(b.q_no >= 1 && b.q_no <= 10) || !(b.topic || '').trim() || !b.lesson) return err('Please fill all inputs');
@@ -67,6 +73,15 @@ export async function POST(req, { params }) {
       if (!(b.paper > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(b.date || '')) return err('Enter a quiz number and a date');
       await sql`insert into settings(k,v) values('anchor_paper',${String(b.paper)}) on conflict(k) do update set v=excluded.v`;
       await sql`insert into settings(k,v) values('anchor_date',${b.date}) on conflict(k) do update set v=excluded.v`; return ok();
+    }
+    if (a === 'reports') return ok({ rows: await sql`select r.*, x.new_paper as e_paper, x.new_q as e_q, x."by" as e_by from reports r left join used x on x.id=r.existing_id where not r.done order by r.id` });
+    if (a === 'resolve') {
+      const r = (await sql`select * from reports where id=${b.id}`)[0]; if (!r) return err('Not found');
+      if (b.keep === 'b') {
+        const up = await sql`update used set new_paper=${r.p_paper}, new_q=${r.p_q}, "by"=${r.reported_by} where id=${r.existing_id} returning id`;
+        if (!up.length) await sql`insert into used(old_paper,q_no,new_paper,new_q,"by") values(${r.old_paper},${r.q_no},${r.p_paper},${r.p_q},${r.reported_by})`;
+      }
+      await sql`update reports set done=true where id=${b.id}`; return ok();
     }
     if (a === 'queue') return ok({ rows: await sql`select * from questions where flagged and tag is null order by old_paper,q_no` });
     if (a === 'tag') { await sql`update questions set tag=${b.tag || null}, flagged=false where old_paper=${b.old_paper} and q_no=${b.q_no}`; return ok(); }

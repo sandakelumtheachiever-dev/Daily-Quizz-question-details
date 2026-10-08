@@ -54,18 +54,20 @@ const Msg = ({ s, children }) => s ? <div className="err">{children}</div> : nul
 
 function Check() {
   const [p, setP] = useState(''), [q, setQ] = useState(''), [r, setR] = useState(null), [np, setNp] = useState(''), [nq, setNq] = useState('');
-  const [e1, setE1] = useState(false), [e2, setE2] = useState(false), [m, setM] = useState(''), [marks, setMarks] = useState([]), [editId, setEditId] = useState(null);
+  const [e1, setE1] = useState(false), [e2, setE2] = useState(false), [m, setM] = useState(''), [marks, setMarks] = useState([]), [editId, setEditId] = useState(null), [conf, setConf] = useState(null);
   const loadMarks = async () => setMarks((await api('mymarks')).rows || []);
   useEffect(() => { loadMarks(); }, []);
-  const reset = () => { setP(''); setQ(''); setNp(''); setNq(''); setR(null); setEditId(null); setE1(false); setE2(false); };
-  const go = async () => { if (inv(p) || invQ(q)) { setE1(true); return; } setE1(false); setM(''); setR(await api('check', { old_paper: n(p), q_no: n(q) })); };
+  const reset = () => { setP(''); setQ(''); setNp(''); setNq(''); setR(null); setEditId(null); setConf(null); setE1(false); setE2(false); };
+  const go = async () => { if (inv(p) || invQ(q)) { setE1(true); return; } setE1(false); setM(''); setConf(null); setR(await api('check', { old_paper: n(p), q_no: n(q) })); };
   const mark = async () => {
     if (inv(p) || invQ(q) || inv(np) || (nq && invQ(nq))) { setE2(true); return; } setE2(false);
     const x = await api('mark', { id: editId, old_paper: n(p), q_no: n(q), new_paper: n(np), new_q: n(nq) });
     if (!x.ok) { setM(x.error); return; }
+    if (x.conflict) { setConf({ existing: x.existing, prop: { old_paper: n(p), q_no: n(q), new_paper: n(np), new_q: n(nq) || null } }); return; }
     reset(); setM(x.status === 'updated' ? 'Updated ✅' : 'Saved ✅'); loadMarks();
   };
-  const edit = x => { setP(String(x.old_paper)); setQ(String(x.q_no)); setNp(String(x.new_paper)); setNq(x.new_q ? String(x.new_q) : ''); setEditId(x.id); setR(null); setM(''); setE1(false); setE2(false); };
+  const edit = x => { setP(String(x.old_paper)); setQ(String(x.q_no)); setNp(String(x.new_paper)); setNq(x.new_q ? String(x.new_q) : ''); setEditId(x.id); setConf(null); setR(null); setM(''); setE1(false); setE2(false); };
+  const report = async () => { await api('report', { existing_id: conf.existing[0].id, ...conf.prop }); reset(); setM('Thank you! We will check on it. You can enter the next one.'); };
   const del = async () => { if (!confirm('Delete this entry?')) return; await api('unmark', { id: editId }); reset(); setM('Deleted ✅'); loadMarks(); };
   return <><div className="card"><h3>Is this old question already used in 2027?</h3>
     <input className={cls(e1 && inv(p))} placeholder="2026 quiz no" value={p} onChange={x => setP(x.target.value)} /><input className={cls(e1 && invQ(q))} placeholder="Question no" value={q} onChange={x => setQ(x.target.value)} onKeyDown={x => x.key === 'Enter' && go()} /><button onClick={go}>Check</button>
@@ -75,7 +77,12 @@ function Check() {
       {r.used.length ? r.used.map((u, i) => <div key={i} className="note">Taken for the 2027 quiz {u.new_paper}{u.new_q ? ` Q${u.new_q}` : ''} — {dm(u.new_paper)}</div>) : <div className="note">Not used yet ✅</div>}</>}
     {(r || editId) && <><hr /><b>{editId ? 'Editing a saved entry:' : 'Mark as taken:'}</b><br /><input className={cls(e2 && inv(np))} placeholder="2027 quiz no" value={np} onChange={x => setNp(x.target.value)} /><input className={cls(e2 && nq && invQ(nq))} placeholder="2027 Q no" value={nq} onChange={x => setNq(x.target.value)} /><button onClick={mark}>{editId ? 'Update' : 'Save'}</button>
       {editId && <><button className="t" onClick={reset}>Cancel</button><button className="t" onClick={del}>Delete</button></>}
-      <Msg s={e2}>Enter the 2026 quiz no, a question no (1 to 10) and the 2027 quiz no</Msg></>}
+      <Msg s={e2}>Enter the 2026 quiz no, a question no (1 to 10) and the 2027 quiz no</Msg>
+      {conf && (() => { const same = conf.existing.some(e => e.new_paper === conf.prop.new_paper && (e.new_q || null) === conf.prop.new_q);
+        return <div className="card"><span className="err">Already entered for this question:</span>
+          {conf.existing.map(e => <div key={e.id}>2027 Quiz no {e.new_paper}{e.new_q ? ` Que ${e.new_q}` : ''} (entered by {e.by})</div>)}
+          <div className="note">{same ? 'That is the same entry, so nothing was added.' : 'If your new entry is the correct one, press Report and an admin will check both.'}</div>
+          {!same && <button onClick={report}>Report</button>}<button className="t" onClick={() => setConf(null)}>{same ? 'OK' : 'Cancel'}</button></div>; })()}</>}
   </div>
   {m && <div className="note">{m}</div>}
   {marks.length > 0 && <div className="card"><b>Your last marked (click one to edit)</b><br />{marks.map(x => <button key={x.id} className="t" onClick={() => edit(x)}>2026 Quiz no {x.old_paper} Que {x.q_no} → 2027 Quiz no {x.new_paper}{x.new_q ? ` Que ${x.new_q}` : ''}</button>)}</div>}</>;
@@ -84,7 +91,7 @@ function Check() {
 function Row({ r, mark }) {
   return <div className="card">2026 Quiz {r.old_paper} · Q{r.q_no} — {r.lesson && <b>[{r.lesson}] </b>}{r.topic} {r.tag && <span className="tag">⚠ {r.tag}</span>}
     {r.used.map((u, i) => <div key={i} className="note">Used again in 2027 quiz {u.p}{u.q ? ` Q${u.q}` : ''} — {dm(u.p)}</div>)}
-    {mark && <div><button onClick={async () => { const p = prompt('2027 quiz number?'); if (p) { await api('mark', { old_paper: r.old_paper, q_no: r.q_no, new_paper: n(p) }); alert('Saved'); } }}>Mark taken</button></div>}</div>;
+    {mark && <div><button onClick={async () => { const p = prompt('2027 quiz number?'); if (p) { const x = await api('mark', { old_paper: r.old_paper, q_no: r.q_no, new_paper: n(p) }); alert(x.conflict ? `Already entered the 2027 Quiz no ${x.existing[0].new_paper}${x.existing[0].new_q ? ` Que ${x.existing[0].new_q}` : ''} for this question. Use the Check tab to report if it is wrong.` : x.ok ? 'Saved' : x.error); } }}>Mark taken</button></div>}</div>;
 }
 
 function Find() {
@@ -127,10 +134,18 @@ function Admin() {
   const [rows, setRows] = useState([]); const load = async () => setRows((await api('queue')).rows || []); useEffect(() => { load(); }, []);
   const tag = async (r) => { const t = prompt('Tag text', 'Not good to use'); if (t) { await api('tag', { old_paper: r.old_paper, q_no: r.q_no, tag: t }); load(); } };
   const dismiss = async (r) => { await api('tag', { old_paper: r.old_paper, q_no: r.q_no, tag: null }); load(); };
+  const [reps, setReps] = useState([]); const loadR = async () => setReps((await api('reports')).rows || []); useEffect(() => { loadR(); }, []);
+  const resolve = async (id, keep) => { await api('resolve', { id, keep }); loadR(); };
+  const qs = (p, q) => `2027 Quiz no ${p}${q ? ` Que ${q}` : ''}`;
   const [ap, setAp] = useState(String(A.paper)), [ad, setAd] = useState(A.date), [am, setAm] = useState('');
   const saveA = async () => { const r = await api('setanchor', { paper: n(ap), date: ad }); if (r.ok) { A = { paper: n(ap), date: ad }; setAm('Saved ✅'); } else setAm(r.error); };
-  return <div className="card"><h3>Series date setting</h3>2027 quiz no <input style={{ width: 90 }} value={ap} onChange={x => setAp(x.target.value)} /> is published on <input type="date" value={ad} onChange={x => setAd(x.target.value)} /><button onClick={saveA}>Save</button> <span className="note">{am}</span>
-    <h3>Reported bad questions ({rows.length})</h3>{rows.map(r => <div className="card" key={r.old_paper + '-' + r.q_no}>Quiz {r.old_paper} Q{r.q_no} — {r.topic} (by {r.added_by})<br /><button onClick={() => tag(r)}>Add tag</button><button className="t" onClick={() => dismiss(r)}>Dismiss</button></div>)}</div>;
+  return <><div className="card"><h3>Series date setting</h3>2027 quiz no <input style={{ width: 90 }} value={ap} onChange={x => setAp(x.target.value)} /> is published on <input type="date" value={ad} onChange={x => setAd(x.target.value)} /><button onClick={saveA}>Save</button> <span className="note">{am}</span></div>
+  <div className="card"><h3>Duplicate entry reports ({reps.length})</h3>
+    {reps.length === 0 && <span className="note">No reports</span>}
+    {reps.map(r => <div className="card" key={r.id}><b>2026 Quiz no {r.old_paper} Que {r.q_no}</b><br />
+      A (saved by {r.e_by || '?'}): {r.e_paper ? qs(r.e_paper, r.e_q) : '(removed)'}<br />B (reported by {r.reported_by}): {qs(r.p_paper, r.p_q)}<br />
+      <button onClick={() => resolve(r.id, 'a')}>Keep A (drop B)</button><button onClick={() => resolve(r.id, 'b')}>Keep B (replace A)</button></div>)}</div>
+  <div className="card"><h3>Reported bad questions ({rows.length})</h3>{rows.map(r => <div className="card" key={r.old_paper + '-' + r.q_no}>Quiz {r.old_paper} Q{r.q_no} — {r.topic} (by {r.added_by})<br /><button onClick={() => tag(r)}>Add tag</button><button className="t" onClick={() => dismiss(r)}>Dismiss</button></div>)}</div></>;
 }
 
 function Models() {
