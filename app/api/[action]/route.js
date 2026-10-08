@@ -40,24 +40,6 @@ export async function POST(req, { params }) {
       if (!(b.existing_id > 0) || !(b.new_paper > 0)) return err('Missing numbers');
       await sql`insert into reports(old_paper,q_no,existing_id,p_paper,p_q,reported_by) values(${b.old_paper},${b.q_no},${b.existing_id},${b.new_paper},${b.new_q || null},${u.name})`; return ok();
     }
-    if (a === 'paper') return ok({ rows: await rowsIn(sql, b.paper, b.paper) });
-    if (a === 'recent') {
-      const ps = await sql`select distinct new_paper from used order by new_paper desc limit 3`;
-      if (!ps.length) return ok({ tables: [] });
-      const all = await rowsIn(sql, ps[ps.length - 1].new_paper, ps[0].new_paper);
-      return ok({ tables: ps.map(p => ({ paper: p.new_paper, rows: all.filter(r => r.new_paper === p.new_paper) })) });
-    }
-    if (a === 'compare') {
-      if (!(b.a > 0)) return err('Enter a paper number');
-      if (b.b > 0) {
-        const ra = await rowsIn(sql, b.a, b.a), rb = await rowsIn(sql, b.b, b.b);
-        const ma = new Map(ra.map(r => [key(r), r])), mb = new Map(rb.map(r => [key(r), r]));
-        return ok({ mode: 'two', a: { paper: b.a, rows: ra.map(r => ({ ...r, rep: mb.has(key(r)), with: mb.get(key(r))?.new_q })) }, b: { paper: b.b, rows: rb.map(r => ({ ...r, rep: ma.has(key(r)), with: ma.get(key(r))?.new_q })) } });
-      }
-      const lo = Math.max(1, b.a - 45), all = await rowsIn(sql, lo, b.a);
-      const others = all.filter(r => r.new_paper !== b.a);
-      return ok({ mode: 'window', paper: b.a, from: lo, rows: all.filter(r => r.new_paper === b.a).map(r => ({ ...r, matches: others.filter(o => key(o) === key(r)).map(o => ({ paper: o.new_paper, q: o.new_q })) })) });
-    }
     if (a === 'unmark') { await sql`delete from used where id=${b.id} and ("by"=${u.name} or ${u.role === 'admin'})`; return ok(); }
     if (a === 'add') {
       if (!(b.old_paper > 0) || !(b.q_no >= 1 && b.q_no <= 10) || !(b.topic || '').trim() || !b.lesson) return err('Please fill all inputs');

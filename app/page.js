@@ -30,8 +30,8 @@ export default function Home() {
     <h1>Quiz Bank 2026 → 2027</h1>
     {!user ? <Login done={setUser} /> : <>
       <p>Hi {user.name} ({user.role}) <button className="t" onClick={async () => { await api('logout'); setUser(null); }}>Log out</button></p>
-      {[['check', '1. Check question'], ['find', '2. Find by topic'], ['add', '3. Add topics'], ['recent', '4. Recently taken'], ['recent', '4. Recently taken'], ...(user.role === 'admin' ? [['admin', 'Admin queue']] : [])].map(([k, l]) => <button key={k} className={'t ' + (tab === k ? 'on' : '')} onClick={() => setTab(k)}>{l}</button>)}
-      {tab === 'check' && <Check />}{tab === 'find' && <Find />}{tab === 'add' && <Add user={user} />}{tab === 'recent' && <Recent />}{tab === 'recent' && <Recent />}{tab === 'admin' && <Admin />}
+      {[['check', '1. Check question'], ['find', '2. Find by topic'], ['add', '3. Add topics'], ['recent', '4. Recently taken'], ...(user.role === 'admin' ? [['admin', 'Admin queue']] : [])].map(([k, l]) => <button key={k} className={'t ' + (tab === k ? 'on' : '')} onClick={() => setTab(k)}>{l}</button>)}
+      {tab === 'check' && <Check />}{tab === 'find' && <Find />}{tab === 'add' && <Add user={user} />}{tab === 'recent' && <Recent />}{tab === 'admin' && <Admin />}
       <Models />
     </>}
     <footer>Developed by uvindu sandakelum</footer>
@@ -192,42 +192,4 @@ function Models() {
   useEffect(() => { api('models').then(setM); }, []);
   return <aside>AI model<br /><select value={m.current} onChange={async x => { await api('setmodel', { model: x.target.value }); setM({ ...m, current: x.target.value }); }}>
     {[...new Set([m.current, ...m.models])].filter(Boolean).map(x => <option key={x}>{x}</option>)}</select><br />List loads live from Gemini. Switch if one is busy.</aside>;
-}
-
-function T({ paper, rows, extra }) {
-  return <div className="card sm"><b>2027 Quiz no {paper}</b> — {dm(paper)}
-    <div style={{ overflowX: 'auto' }}><table><thead><tr><th>Que</th><th>Taken from 2026</th><th>Topic</th><th>Lesson</th>{extra && <th>{extra.h}</th>}</tr></thead><tbody>
-      {rows.length === 0 && <tr><td colSpan="5">No entries</td></tr>}
-      {rows.map((r, i) => <tr key={i} className={r.rep || r.matches?.length ? 'rep' : ''}><td>{r.new_q || '—'}</td><td>Quiz {r.old_paper} Q{r.q_no}</td><td>{r.topic || '—'}</td><td>{r.lesson || '—'}</td>{extra && <td>{extra.f(r)}</td>}</tr>)}
-    </tbody></table></div></div>;
-}
-
-function Recent() {
-  const [tables, setTables] = useState(null), [hs, setHs] = useState(''), [hist, setHist] = useState(null), [ca, setCa] = useState(''), [cb, setCb] = useState('');
-  const [res, setRes] = useState(null), [e1, setE1] = useState(false), [ec, setEc] = useState('');
-  useEffect(() => { api('recent').then(r => setTables(r.tables || [])); }, []);
-  const search = async () => { if (inv(hs)) { setE1(true); return; } setE1(false); const r = await api('paper', { paper: n(hs) }); setHist({ paper: n(hs), rows: r.rows || [] }); };
-  const win = async () => { if (inv(ca)) { setEc('w'); return; } setEc(''); setRes(await api('compare', { a: n(ca) })); };
-  const two = async () => { if (inv(ca) || inv(cb)) { setEc('t'); return; } setEc(''); setRes(await api('compare', { a: n(ca), b: n(cb) })); };
-  const cnt = rows => rows.filter(r => r.rep || r.matches?.length).length;
-  return <>
-    <div className="card"><h3>Search a paper's table</h3>
-      <input className={cls(e1)} placeholder="2027 quiz no" value={hs} onChange={x => setHs(x.target.value)} onKeyDown={x => x.key === 'Enter' && search()} /><button onClick={search}>Show</button>
-      <Msg s={e1}>Enter a 2027 quiz number</Msg>{hist && <T paper={hist.paper} rows={hist.rows} />}</div>
-    <div className="card"><h3>Find repeated questions</h3>
-      <input className={cls(ec && inv(ca))} placeholder="2027 quiz no" value={ca} onChange={x => setCa(x.target.value)} /><input className={cls(ec === 't' && inv(cb))} placeholder="2nd quiz no (optional)" value={cb} onChange={x => setCb(x.target.value)} /><br />
-      <button onClick={win}>Check previous 45 papers</button><button onClick={two}>Compare these two papers</button>
-      <div className="note sm">Repeated = same topic (or same old question). The 45-paper check uses only the first box. Comparing two papers has no day limit.</div>
-      <Msg s={ec}>{ec === 't' ? 'Enter both quiz numbers' : 'Enter a 2027 quiz number'}</Msg>
-      {res?.error && <div className="err">{res.error}</div>}
-      {res?.mode === 'window' && <><div className="note">{cnt(res.rows) ? `${cnt(res.rows)} repeated question(s) found in papers ${res.from}–${res.paper - 1}` : `No repeats found in papers ${res.from}–${res.paper - 1} ✅`}</div>
-        <T paper={res.paper} rows={res.rows} extra={{ h: 'Repeated in', f: r => r.matches.map(m => `Paper ${m.paper} Q${m.q || '?'}`).join(', ') }} /></>}
-      {res?.mode === 'two' && <><div className="note">{cnt(res.a.rows) ? `${cnt(res.a.rows)} repeated question(s) between the two papers` : 'No repeated questions between these papers ✅'}</div>
-        <T paper={res.a.paper} rows={res.a.rows} extra={{ h: 'Repeated with', f: r => r.rep ? `Paper ${res.b.paper} Q${r.with || '?'}` : '' }} />
-        <T paper={res.b.paper} rows={res.b.rows} extra={{ h: 'Repeated with', f: r => r.rep ? `Paper ${res.a.paper} Q${r.with || '?'}` : '' }} /></>}
-    </div>
-    <h3>Most recent 3 papers</h3>
-    {tables && tables.length === 0 && <div className="note">Nothing marked yet</div>}
-    {tables?.map(t => <T key={t.paper} paper={t.paper} rows={t.rows} />)}
-  </>;
 }
