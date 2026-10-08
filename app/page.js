@@ -30,8 +30,8 @@ export default function Home() {
     <h1>Quiz Bank 2026 → 2027</h1>
     {!user ? <Login done={setUser} /> : <>
       <p>Hi {user.name} ({user.role}) <button className="t" onClick={async () => { await api('logout'); setUser(null); }}>Log out</button></p>
-      {[['check', '1. Check question'], ['find', '2. Find by topic'], ['add', '3. Add topics'], ['recent', '4. Recently taken'], ...(user.role === 'admin' ? [['admin', 'Admin queue']] : [])].map(([k, l]) => <button key={k} className={'t ' + (tab === k ? 'on' : '')} onClick={() => setTab(k)}>{l}</button>)}
-      {tab === 'check' && <Check />}{tab === 'find' && <Find />}{tab === 'add' && <Add user={user} />}{tab === 'recent' && <Recent />}{tab === 'admin' && <Admin />}
+      {[['check', '1. Check question'], ['find', '2. Find by topic'], ['add', '3. Add topics'], ['recent', '4. Recently taken'], ...(user.role === 'admin' ? [['import', '5. Import topics'], ['admin', 'Admin queue']] : [])].map(([k, l]) => <button key={k} className={'t ' + (tab === k ? 'on' : '')} onClick={() => setTab(k)}>{l}</button>)}
+      {tab === 'check' && <Check />}{tab === 'find' && <Find />}{tab === 'add' && <Add user={user} />}{tab === 'recent' && <Recent />}{tab === 'import' && <Import />}{tab === 'admin' && <Admin />}
       <Models />
     </>}
     <footer>Developed by uvindu sandakelum</footer>
@@ -185,6 +185,33 @@ function Recent() {
       {tr && <><div className={tr.both.size ? 'err' : 'note'}>{tr.both.size ? `${tr.both.size} repeated question${tr.both.size > 1 ? 's' : ''} found (highlighted)` : 'No repeated questions between these two papers ✅'}</div>
         <Tbl {...tr.a} hi={tr.both} /><Tbl {...tr.b} hi={tr.both} /></>}</div>
   </div>;
+}
+
+const parseCsv = t => t.split(/\r?\n/).filter(l => l.trim()).map(l => { const d = l.includes('\t') ? '\t' : ','; const out = []; let c = '', q = false;
+  for (const ch of l) { if (ch === '"') q = !q; else if (ch === d && !q) { out.push(c.trim()); c = ''; } else c += ch; } out.push(c.trim()); return out; });
+
+function Import() {
+  const [txt, setTxt] = useState(''), [over, setOver] = useState(false), [msg, setMsg] = useState(''), [busy, setBusy] = useState(false);
+  const rows = [], bad = [];
+  parseCsv(txt).forEach((r, i) => {
+    if (i === 0 && isNaN(parseInt(r[0]))) return;
+    const lesson = LESSONS.find(l => l.toLowerCase() === (r[3] || '').toLowerCase()), o = parseInt(r[0]), q = parseInt(r[1]), t = r[2] || '';
+    const why = !(o > 0) ? 'bad paper number' : !(q >= 1 && q <= 10) ? 'question no must be 1 to 10' : !t || /^unreadable$/i.test(t) ? 'no topic' : !lesson ? `unknown lesson "${r[3] || ''}"` : '';
+    why ? bad.push(`Line ${i + 1}: ${why}`) : rows.push({ old_paper: o, q_no: q, topic: t, lesson });
+  });
+  const file = x => { const f = x.target.files[0]; if (f) { const rd = new FileReader(); rd.onload = () => setTxt(String(rd.result)); rd.readAsText(f); } };
+  const go = async () => {
+    setBusy(true); setMsg(''); let a = 0, u = 0, s = 0;
+    for (let i = 0; i < rows.length; i += 500) { const r = await api('import', { rows: rows.slice(i, i + 500), overwrite: over }); if (!r.ok) { setMsg(r.error || 'Failed'); setBusy(false); return; } a += r.inserted; u += r.updated; s += r.skipped; }
+    setMsg(`✅ ${a} new, ${u} updated, ${s} skipped (already existed)`); setTxt(''); setBusy(false);
+  };
+  return <div className="card"><h3>Import topics from a file</h3>
+    <div className="note">Columns: paper, question, topic, lesson (CSV, or paste straight from Excel).</div>
+    <input type="file" accept=".csv,.txt" onChange={file} /><br />
+    <textarea style={{ width: '100%', height: 180, background: '#111a2e', color: '#dbe7ff', border: '1px solid #1e3a6e', borderRadius: 8, padding: 8 }} placeholder={'paper,question,topic,lesson\n500,1,K-map to S.O.P.,LG'} value={txt} onChange={x => setTxt(x.target.value)} />
+    <label><input type="checkbox" checked={over} onChange={x => setOver(x.target.checked)} /> Overwrite topics that already exist (otherwise they are skipped)</label><br />
+    {txt && <div><span className="note">{rows.length} rows ready</span> {bad.length > 0 && <span className="err">· {bad.length} problem rows (will be skipped)</span>}{bad.slice(0, 6).map(b => <div key={b} className="err">{b}</div>)}</div>}
+    <button disabled={!rows.length || busy} onClick={go}>{busy ? 'Importing...' : `Import ${rows.length} rows`}</button> <span className="note">{msg}</span></div>;
 }
 
 function Models() {

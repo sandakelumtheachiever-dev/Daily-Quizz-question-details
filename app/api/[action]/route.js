@@ -5,6 +5,7 @@ import { gem, getModel, listModels } from '@/lib/gemini';
 const nm = t => (t || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 const key = r => nm(r.topic) || `o${r.old_paper}-${r.q_no}`;
 const rowsIn = (sql, lo, hi) => sql`select x.new_paper, x.new_q, x.old_paper, x.q_no, q.topic, q.lesson from used x left join questions q on q.old_paper=x.old_paper and q.q_no=x.q_no where x.new_paper between ${lo} and ${hi} order by x.new_paper, x.new_q nulls last, x.id`;
+const LESSONS = ['Lesson 1', 'Lesson 2', 'NS', 'LG', 'OS', 'Networking', 'System', 'Database', 'Python', 'Web', 'IOT', 'E-commerce', 'New trends'];
 const ok = (d = {}) => NextResponse.json(d);
 const err = (m, s = 400) => NextResponse.json({ error: m }, { status: s });
 
@@ -91,6 +92,15 @@ export async function POST(req, { params }) {
       if (!(b.paper > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(b.date || '')) return err('Enter a quiz number and a date');
       await sql`insert into settings(k,v) values('anchor_paper',${String(b.paper)}) on conflict(k) do update set v=excluded.v`;
       await sql`insert into settings(k,v) values('anchor_date',${b.date}) on conflict(k) do update set v=excluded.v`; return ok();
+    }
+    if (a === 'import') {
+      const m = new Map();
+      for (const r of b.rows || []) { const o = parseInt(r.old_paper), q = parseInt(r.q_no), t = String(r.topic || '').trim();
+        if (o > 0 && q >= 1 && q <= 10 && t && LESSONS.includes(r.lesson)) m.set(o + '-' + q, [o, q, t, r.lesson]); }
+      const v = [...m.values()]; if (!v.length) return ok({ inserted: 0, updated: 0, skipped: 0 });
+      const res = await sql.query(`insert into questions(old_paper,q_no,topic,lesson,added_by) select a,b,c,d,$5::text from unnest($1::int[],$2::int[],$3::text[],$4::text[]) as t(a,b,c,d) on conflict(old_paper,q_no) do ${b.overwrite ? 'update set topic=excluded.topic, lesson=excluded.lesson, updated_at=now()' : 'nothing'} returning (xmax = 0) as ins`,
+        [v.map(x => x[0]), v.map(x => x[1]), v.map(x => x[2]), v.map(x => x[3]), u.name]);
+      const ins = res.filter(x => x.ins).length; return ok({ inserted: ins, updated: res.length - ins, skipped: v.length - res.length });
     }
     if (a === 'reports') return ok({ rows: await sql`select r.*, x.new_paper as e_paper, x.new_q as e_q, x.old_paper as e_old, x.q_no as e_qno, x."by" as e_by from reports r left join used x on x.id=r.existing_id where not r.done order by r.id` });
     if (a === 'resolve') {
