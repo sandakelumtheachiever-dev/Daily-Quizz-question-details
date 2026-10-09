@@ -30,8 +30,8 @@ export default function Home() {
     <h1>Quiz Bank 2026 → 2027</h1>
     {!user ? <Login done={setUser} /> : <>
       <p>Hi {user.name} ({user.role}) <button className="t" onClick={async () => { await api('logout'); setUser(null); }}>Log out</button></p>
-      {[['check', '1. Check question'], ['find', '2. Find by topic'], ['add', '3. Add topics'], ['recent', '4. Recently taken'], ...(user.role === 'admin' ? [['import', '5. Import topics'], ['admin', 'Admin queue']] : [])].map(([k, l]) => <button key={k} className={'t ' + (tab === k ? 'on' : '')} onClick={() => setTab(k)}>{l}</button>)}
-      {tab === 'check' && <Check />}{tab === 'find' && <Find />}{tab === 'add' && <Add user={user} />}{tab === 'recent' && <Recent />}{tab === 'import' && <Import />}{tab === 'admin' && <Admin />}
+      {[['check', '1. Check question'], ['find', '2. Find by topic'], ['add', '3. Add topics'], ['recent', '4. Recently taken'], ['refined', 'Refined questions'], ['log', 'Activity log'], ...(user.role === 'admin' ? [['import', 'Import topics'], ['admin', 'Admin queue']] : [])].map(([k, l]) => <button key={k} className={'t ' + (tab === k ? 'on' : '')} onClick={() => setTab(k)}>{l}</button>)}
+      {tab === 'check' && <Check />}{tab === 'find' && <Find />}{tab === 'add' && <Add user={user} />}{tab === 'recent' && <Recent />}{tab === 'import' && <Import />}{tab === 'log' && <Log />}{tab === 'refined' && <Refined user={user} />}{tab === 'admin' && <Admin />}
       <Models />
     </>}
     <footer>Developed by uvindu sandakelum</footer>
@@ -51,6 +51,8 @@ const Lesson = ({ v, set, e, ph }) => <select className={e ? 'bad' : ''} value={
 const inv = v => !(n(v) > 0);
 const invQ = v => !(n(v) >= 1 && n(v) <= 10);
 const cls = e => (e ? 'bad' : '');
+const Flag = ({ r }) => r.tag ? <span className="tag">⚠ {r.tag}</span> : r.flagged ? <span className="tag pend">⚑ Removal/refining needed</span> : r.refined_by ? <span className="tag ok">✅ Refined by {r.refined_by}</span> : null;
+const Dl = ({ r }) => r.refined_by && !r.flagged && !r.tag ? <a className="dl" href={`/api/file?old_paper=${r.old_paper}&q_no=${r.q_no}`}>⬇ Download refined question</a> : null;
 const Msg = ({ s, children }) => s ? <div className="err">{children}</div> : null;
 
 function Check() {
@@ -74,7 +76,7 @@ function Check() {
     <input className={cls(e1 && inv(p))} placeholder="2026 quiz no" value={p} onChange={x => setP(x.target.value)} /><input className={cls(e1 && invQ(q))} placeholder="Question no" value={q} onChange={x => setQ(x.target.value)} onKeyDown={x => x.key === 'Enter' && go()} /><button onClick={go}>Check</button>
     <Msg s={e1}>Enter the quiz number and a question number from 1 to 10</Msg>
     {r && <>
-      {r.question && <div className="card">{r.question.lesson && <b>[{r.question.lesson}] </b>}Topic: {r.question.topic} {r.question.tag && <span className="tag">⚠ {r.question.tag}</span>}</div>}
+      {r.question && <div className="card">{r.question.lesson && <b>[{r.question.lesson}] </b>}Topic: {r.question.topic} <Flag r={r.question} /> <Dl r={r.question} /></div>}
       {r.used.length ? r.used.map((u, i) => <div key={i} className="note">Taken for the 2027 quiz {u.new_paper}{u.new_q ? ` Q${u.new_q}` : ''} — {dm(u.new_paper)}</div>) : <div className="note">Not used yet ✅</div>}</>}
     {(r || editId) && <><hr /><b>{editId ? 'Editing a saved entry:' : 'Mark as taken:'}</b><br /><input className={cls(e2 && inv(np))} placeholder="2027 quiz no" value={np} onChange={x => setNp(x.target.value)} /><input className={cls(e2 && nq && invQ(nq))} placeholder="2027 Q no" value={nq} onChange={x => setNq(x.target.value)} /><button onClick={mark}>{editId ? 'Update' : 'Save'}</button>
       {editId && <><button className="t" onClick={reset}>Cancel</button><button className="t" onClick={del}>Delete</button></>}
@@ -90,7 +92,7 @@ function Check() {
 }
 
 function Row({ r, mark }) {
-  return <div className="card">2026 Quiz {r.old_paper} · Q{r.q_no} — {r.lesson && <b>[{r.lesson}] </b>}{r.topic} {r.tag && <span className="tag">⚠ {r.tag}</span>}
+  return <div className="card">2026 Quiz {r.old_paper} · Q{r.q_no} — {r.lesson && <b>[{r.lesson}] </b>}{r.topic} <Flag r={r} /> <Dl r={r} />
     {r.used.map((u, i) => <div key={i} className="note">Used again in 2027 quiz {u.p}{u.q ? ` Q${u.q}` : ''} — {dm(u.p)}</div>)}
     {mark && <div><button onClick={async () => { const p = prompt('2027 quiz number?'); if (p) { const x = await api('mark', { old_paper: r.old_paper, q_no: r.q_no, new_paper: n(p) }); alert(x.conflict ? `Already entered the 2027 Quiz no ${x.existing[0].new_paper}${x.existing[0].new_q ? ` Que ${x.existing[0].new_q}` : ''} for this question. Use the Check tab to report if it is wrong.` : x.ok ? 'Saved' : x.error); } }}>Mark taken</button></div>}</div>;
 }
@@ -127,8 +129,25 @@ function Add({ user }) {
     <label><input type="checkbox" checked={bad} onChange={x => setBad(x.target.checked)} /> This is a bad question</label><br />
     <Msg s={er}>Enter {[inv(p) && 'the quiz number', invQ(q) && 'a question number (1 to 10)', !t.trim() && 'the topic', !lesson && 'the lesson'].filter(Boolean).join(', ')}</Msg>
     <button onClick={go}>Save</button> {m && <span className={m.e ? 'err' : 'note'}>{m.s}</span>}
-    {mine.length > 0 && <><h3>Your last added</h3>{mine.map(r => <div className="card" key={r.old_paper + '-' + r.q_no}>Quiz {r.old_paper} · Q{r.q_no} — {r.lesson && <b>[{r.lesson}] </b>}{r.topic} <button className="t" onClick={() => { setP(String(r.old_paper)); setQ(String(r.q_no)); setT(r.topic); setL(r.lesson || ''); setBad(false); setM(null); }}>Edit</button></div>)}</>}
+    {mine.length > 0 && <><h3>Your last added</h3>{mine.map(r => <div className="card" key={r.old_paper + '-' + r.q_no}>Quiz {r.old_paper} · Q{r.q_no} — {r.lesson && <b>[{r.lesson}] </b>}{r.topic} <Flag r={r} /> <button className="t" onClick={() => { setP(String(r.old_paper)); setQ(String(r.q_no)); setT(r.topic); setL(r.lesson || ''); setBad(false); setM(null); }}>Edit</button></div>)}</>}
   </div>;
+}
+
+function Fix({ r, done }) {
+  const [by, setBy] = useState(''), [f, setF] = useState(null), [m, setM] = useState('');
+  const pick = x => { const file = x.target.files[0]; if (!file) return; if (file.size > 3e6) { setM('File must be under 3 MB'); return; } const rd = new FileReader(); rd.onload = () => { setF({ name: file.name, b64: String(rd.result).split(',')[1] }); setM(''); }; rd.readAsDataURL(file); };
+  const refine = async () => { if (!by.trim() || !f) { setM('Enter the name and choose the Word file'); return; } const x = await api('refine', { old_paper: r.old_paper, q_no: r.q_no, by: by.trim(), fname: f.name, b64: f.b64 }); x.ok ? done() : setM(x.error); };
+  const act = async tag => { await api('tag', { old_paper: r.old_paper, q_no: r.q_no, tag }); done(); };
+  return <div className="card"><b>2026 Quiz {r.old_paper} Q{r.q_no}</b> {r.lesson && `[${r.lesson}] `}— {r.topic} <span className="note">(topic added by {r.added_by})</span><br />
+    <button onClick={() => act("Don't use this question")}>Don't use this question</button><button className="t" onClick={() => act(null)}>Dismiss (it is fine)</button>
+    <div style={{ marginTop: 8 }}><b>Refined it?</b> <input placeholder="Refined by (name)" value={by} onChange={x => setBy(x.target.value)} /><input type="file" accept=".doc,.docx" onChange={pick} /><button onClick={refine}>Mark refined</button> <span className="err">{m}</span></div></div>;
+}
+
+function Refined({ user }) {
+  const [rows, setRows] = useState(null);
+  useEffect(() => { api('refined').then(r => setRows(r.rows || [])); }, []);
+  return <div className="card"><h3>Refined questions</h3>{rows && rows.length === 0 && <span className="note">No refined questions yet</span>}
+    {(rows || []).map(r => <div className="card" key={r.old_paper + '-' + r.q_no}>2026 Quiz {r.old_paper} · Q{r.q_no} — {r.lesson && <b>[{r.lesson}] </b>}{r.topic} <span className="tag ok">✅ Refined by {r.refined_by}</span>{user.role === 'admin' && <> <a className="dl" href={`/api/file?old_paper=${r.old_paper}&q_no=${r.q_no}`}>⬇ Word file</a></>}</div>)}</div>;
 }
 
 function Admin() {
@@ -146,7 +165,7 @@ function Admin() {
     {reps.map(r => <div className="card" key={r.id}>{r.kind === 's' ? <><b>{qs(r.p_paper, r.p_q)}</b><br />A (saved by {r.e_by || '?'}): {r.e_paper ? `2026 Quiz no ${r.e_old} Que ${r.e_qno}` : '(removed)'}<br />B (reported by {r.reported_by}): 2026 Quiz no {r.old_paper} Que {r.q_no}<br /></> : <><b>2026 Quiz no {r.old_paper} Que {r.q_no}</b><br />
       A (saved by {r.e_by || '?'}): {r.e_paper ? qs(r.e_paper, r.e_q) : '(removed)'}<br />B (reported by {r.reported_by}): {qs(r.p_paper, r.p_q)}<br /></>}
       <button onClick={() => resolve(r.id, 'a')}>Keep A (drop B)</button><button onClick={() => resolve(r.id, 'b')}>Keep B (replace A)</button></div>)}</div>
-  <div className="card"><h3>Reported bad questions ({rows.length})</h3>{rows.map(r => <div className="card" key={r.old_paper + '-' + r.q_no}>Quiz {r.old_paper} Q{r.q_no} — {r.topic} (by {r.added_by})<br /><button onClick={() => tag(r)}>Add tag</button><button className="t" onClick={() => dismiss(r)}>Dismiss</button></div>)}</div></>;
+  <div className="card"><h3>Removal/refining needed ({rows.length})</h3>{rows.length === 0 && <span className="note">Nothing waiting</span>}{rows.map(r => <Fix key={r.old_paper + '-' + r.q_no} r={r} done={load} />)}</div></>;
 }
 
 const keyOf = r => r.old_paper + '-' + r.q_no;
@@ -155,7 +174,7 @@ function Tbl({ paper, rows, hi }) {
   return <div className="card"><b>2027 Quiz no {paper}</b> <span className="note">· paper {d === 0 ? 'is issued today' : d < 0 ? `was issued ${-d} day${d === -1 ? '' : 's'} ago` : `will be issued in ${d} day${d === 1 ? '' : 's'}`}</span>
     {!rows.length ? <div className="err">This paper doesn't have taken questions from the 2026 series, or no data entered.</div> :
       <div style={{ overflowX: 'auto' }}><table className="sm"><thead><tr><th>Q no</th><th>Taken from 2026</th><th>Question topic</th><th>Lesson</th></tr></thead>
-        <tbody>{rows.map((r, i) => <tr key={i} className={hi?.has(keyOf(r)) ? 'hr' : ''}><td>{r.new_q || '–'}</td><td>Quiz {r.old_paper} Que {r.q_no}</td><td>{r.topic || '(topic not entered)'}</td><td>{r.lesson || '–'}</td></tr>)}</tbody></table></div>}</div>;
+        <tbody>{rows.map((r, i) => <tr key={i} className={hi?.has(keyOf(r)) ? 'hr' : ''}><td>{r.new_q || '–'}</td><td>Quiz {r.old_paper} Que {r.q_no}</td><td>{r.topic || '(topic not entered)'} <Flag r={r} /></td><td>{r.lesson || '–'}</td></tr>)}</tbody></table></div>}</div>;
 }
 
 function Recent() {
@@ -212,6 +231,15 @@ function Import() {
     <label><input type="checkbox" checked={over} onChange={x => setOver(x.target.checked)} /> Overwrite topics that already exist (otherwise they are skipped)</label><br />
     {txt && <div><span className="note">{rows.length} rows ready</span> {bad.length > 0 && <span className="err">· {bad.length} problem rows (will be skipped)</span>}{bad.slice(0, 6).map(b => <div key={b} className="err">{b}</div>)}</div>}
     <button disabled={!rows.length || busy} onClick={go}>{busy ? 'Importing...' : `Import ${rows.length} rows`}</button> <span className="note">{msg}</span></div>;
+}
+
+function Log() {
+  const [rows, setRows] = useState([]), [f, setF] = useState('');
+  useEffect(() => { api('logs').then(r => setRows(r.rows || [])); }, []);
+  const shown = rows.filter(r => !f || (r.who + ' ' + r.act + ' ' + r.detail).toLowerCase().includes(f.toLowerCase()));
+  return <div className="card sm"><h3>Activity log (latest 300)</h3><input placeholder="Filter by user or text" value={f} onChange={x => setF(x.target.value)} />
+    <div style={{ overflowX: 'auto' }}><table className="sm"><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Details</th></tr></thead>
+      <tbody>{shown.map(r => <tr key={r.id}><td>{new Date(r.at).toLocaleString('en-GB')}</td><td>{r.who}{r.role === 'admin' ? ' (admin)' : ''}</td><td>{r.act}</td><td>{r.detail}</td></tr>)}</tbody></table></div>{shown.length === 0 && <span className="note">Nothing logged yet</span>}</div>;
 }
 
 function Models() {
