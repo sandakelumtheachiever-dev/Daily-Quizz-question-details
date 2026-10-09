@@ -90,6 +90,11 @@ export async function POST(req, { params }) {
       return ok({ total: tot[0].c, rows: [...g.values()] });
     }
     if (a === 'logs') return ok({ rows: await sql`select * from activity order by id desc limit 300` });
+    if (a === 'flag') {
+      const x = await sql`update questions set flagged=true where old_paper=${b.old_paper} and q_no=${b.q_no} returning topic`;
+      if (!x.length) return err('Question not found');
+      await log('Reported bad question', `2026 Quiz ${b.old_paper} Que ${b.q_no}: ${x[0].topic}`); return ok();
+    }
     if (a === 'refined') return ok({ rows: await sql`select old_paper,q_no,topic,lesson,refined_by from questions where refined_by is not null and tag is null and not flagged order by updated_at desc` });
     if (a === 'anchor') {
       const m = Object.fromEntries((await sql`select k,v from settings where k in ('anchor_paper','anchor_date')`).map(r => [r.k, r.v]));
