@@ -84,7 +84,7 @@ export async function POST(req, { params }) {
     }
     if (a === 'compare') {
       const tot = await sql`select count(*)::int as c from used where new_paper=${b.paper}`;
-      const rr = await sql`select a.new_q, a.old_paper, a.q_no, q.topic, q.lesson, b.new_paper as bp, b.new_q as bq from used a join used b on b.old_paper=a.old_paper and b.q_no=a.q_no and b.new_paper<a.new_paper and b.new_paper>=a.new_paper-45 left join questions q on q.old_paper=a.old_paper and q.q_no=a.q_no where a.new_paper=${b.paper} order by a.new_q nulls last, b.new_paper desc`;
+      const rr = await sql`select a.new_q, a.old_paper, a.q_no, q.topic, q.lesson, b.new_paper as bp, b.new_q as bq from used a join used b on b.old_paper=a.old_paper and b.q_no=a.q_no and b.new_paper<a.new_paper and b.new_paper>=a.new_paper-90 left join questions q on q.old_paper=a.old_paper and q.q_no=a.q_no where a.new_paper=${b.paper} order by a.new_q nulls last, b.new_paper desc`;
       const g = new Map();
       rr.forEach(r => { const k = r.old_paper + '-' + r.q_no; if (!g.has(k)) g.set(k, { new_q: r.new_q, old_paper: r.old_paper, q_no: r.q_no, topic: r.topic, lesson: r.lesson, hits: [] }); g.get(k).hits.push({ paper: r.bp, q: r.bq, gap: b.paper - r.bp }); });
       return ok({ total: tot[0].c, rows: [...g.values()] });
