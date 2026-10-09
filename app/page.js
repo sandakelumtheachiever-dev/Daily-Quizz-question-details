@@ -203,9 +203,9 @@ function Recent() {
     <div className="card"><h3>Search an earlier paper</h3><input className={cls(e1)} placeholder="2027 quiz no" value={sp} onChange={x => setSp(x.target.value)} onKeyDown={x => x.key === 'Enter' && search()} /><button onClick={search}>Search</button>
       <Msg s={e1}>Enter a quiz number</Msg>{sr && <Tbl {...sr} />}</div>
     <h3>Most recently entered papers</h3>{rec.length === 0 && <span className="note">No data yet</span>}{rec.map(p => <Tbl key={p.paper} {...p} />)}
-    <div className="card"><h3>Find repeats in the previous 45 days</h3><input className={cls(e2)} placeholder="2027 quiz no" value={cp} onChange={x => setCp(x.target.value)} /><button onClick={cmp}>Compare</button>
+    <div className="card"><h3>Find repeats in the previous 90 days</h3><input className={cls(e2)} placeholder="2027 quiz no" value={cp} onChange={x => setCp(x.target.value)} /><button onClick={cmp}>Compare</button>
       <Msg s={e2}>Enter a quiz number</Msg>
-      {cr && (cr.total === 0 ? <div className="err">This paper doesn't have taken questions from the 2026 series, or no data entered.</div> : cr.rows.length === 0 ? <div className="note">No repeated questions with papers {Math.max(1, cr.paper - 45)} to {cr.paper - 1} ✅</div> :
+      {cr && (cr.total === 0 ? <div className="err">This paper doesn't have taken questions from the 2026 series, or no data entered.</div> : cr.rows.length === 0 ? <div className="note">No repeated questions with papers {Math.max(1, cr.paper - 90)} to {cr.paper - 1} ✅</div> :
         cr.rows.map(r => <div className="card" key={keyOf(r)}><b>2027 Quiz {cr.paper} · Q{r.new_q || '?'}</b> = 2026 Quiz {r.old_paper} Que {r.q_no}{r.lesson && ` [${r.lesson}]`}<br />{r.topic}
           {r.hits.map((h, i) => <div key={i} className="note">↳ also in 2027 Quiz {h.paper}{h.q ? ` Que ${h.q}` : ''} · {h.gap} day{h.gap === 1 ? '' : 's'} earlier</div>)}</div>))}</div>
     <div className="card"><h3>Compare any two papers</h3><input className={cls(e3 && inv(ta))} placeholder="Paper A" value={ta} onChange={x => setTa(x.target.value)} /><input className={cls(e3 && inv(tb))} placeholder="Paper B" value={tb} onChange={x => setTb(x.target.value)} /><button onClick={cmp2}>Compare</button>
