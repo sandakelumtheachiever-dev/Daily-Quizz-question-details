@@ -96,7 +96,7 @@ function Row({ r, mark }) {
   const report = async () => { if (!confirm('Report this as a bad question? An admin will check it.')) return; const x = await api('flag', { old_paper: r.old_paper, q_no: r.q_no }); x.ok ? setFl(true) : alert(x.error); };
   return <div className="card">2026 Quiz {r.old_paper} · Q{r.q_no} — {r.lesson && <b>[{r.lesson}] </b>}{r.topic} <Flag r={rr} /> <Dl r={rr} />
     {r.used.map((u, i) => <div key={i} className="note">Used again in 2027 quiz {u.p}{u.q ? ` Q${u.q}` : ''} — {dm(u.p)}</div>)}
-    <div>{mark && <button onClick={async () => { const p = prompt('2027 quiz number?'); if (p) { const x = await api('mark', { old_paper: r.old_paper, q_no: r.q_no, new_paper: n(p) }); alert(x.conflict ? `Already entered the 2027 Quiz no ${x.existing[0].new_paper}${x.existing[0].new_q ? ` Que ${x.existing[0].new_q}` : ''} for this question. Use the Check tab to report if it is wrong.` : x.ok ? 'Saved' : x.error); } }}>Mark taken</button>}{!rr.flagged && !r.tag && <button className="t" onClick={report}>⚑ Report as a bad question</button>}</div></div>;
+    <div>{mark && <button onClick={async () => { const p = prompt('2027 quiz number?'); if (p) { const x = await api('mark', { old_paper: r.old_paper, q_no: r.q_no, new_paper: n(p) }); alert(x.conflict ? `Already entered the 2027 Quiz no ${x.existing[0].new_paper}${x.existing[0].new_q ? ` Que ${x.existing[0].new_q}` : ''} for this question. Use the Check tab to report if it is wrong.` : x.ok ? 'Saved' : x.error); } }}>Mark taken</button>}{!rr.flagged && !r.tag && <button className="t" onClick={report}>⚑ Report as bad question</button>}</div></div>;
 }
 
 function Find() {
@@ -128,11 +128,18 @@ function Add({ user }) {
     <input className={cls(er && inv(p))} placeholder="2026 quiz no" value={p} onChange={x => setP(x.target.value)} /><input className={cls(er && invQ(q))} placeholder="Question no" value={q} onChange={x => setQ(x.target.value)} /><Lesson v={lesson} set={setL} e={er && !lesson} ph="Lesson…" /><br />
     {note && <div className="note">ℹ {note.added_by === user.name ? 'You' : `User ${note.added_by}`} already put the topic to this question: "{note.topic}"</div>}
     <input className={cls(er && !t.trim())} style={{ width: '90%' }} placeholder="Topic" value={t} onChange={x => setT(x.target.value)} onKeyDown={x => x.key === 'Enter' && go()} /><br />
-    <label><input type="checkbox" checked={bad} onChange={x => setBad(x.target.checked)} /> Report as a bad question to remove or refine. </label><br />
+    <label><input type="checkbox" checked={bad} onChange={x => setBad(x.target.checked)} /> This is a bad question</label><br />
     <Msg s={er}>Enter {[inv(p) && 'the quiz number', invQ(q) && 'a question number (1 to 10)', !t.trim() && 'the topic', !lesson && 'the lesson'].filter(Boolean).join(', ')}</Msg>
     <button onClick={go}>Save</button> {m && <span className={m.e ? 'err' : 'note'}>{m.s}</span>}
     {mine.length > 0 && <><h3>Your last added</h3>{mine.map(r => <div className="card" key={r.old_paper + '-' + r.q_no}>Quiz {r.old_paper} · Q{r.q_no} — {r.lesson && <b>[{r.lesson}] </b>}{r.topic} <Flag r={r} /> <button className="t" onClick={() => { setP(String(r.old_paper)); setQ(String(r.q_no)); setT(r.topic); setL(r.lesson || ''); setBad(false); setM(null); }}>Edit</button></div>)}</>}
   </div>;
+}
+
+function Tagged() {
+  const [rows, setRows] = useState([]); const load = async () => setRows((await api('tagged')).rows || []); useEffect(() => { load(); }, []);
+  const rm = async r => { await api('tag', { old_paper: r.old_paper, q_no: r.q_no, tag: null }); load(); };
+  return <div className="card"><h3>Questions with a red label ({rows.length})</h3>{rows.length === 0 && <span className="note">None</span>}
+    {rows.map(r => <div className="card" key={r.old_paper + '-' + r.q_no}>2026 Quiz {r.old_paper} · Q{r.q_no} — {r.lesson && <b>[{r.lesson}] </b>}{r.topic} <span className="tag">⚠ {r.tag}</span> <button onClick={() => rm(r)}>Remove label</button></div>)}</div>;
 }
 
 function Fix({ r, done }) {
@@ -153,7 +160,7 @@ function Refined({ user }) {
 }
 
 function Admin() {
-  const [rows, setRows] = useState([]); const load = async () => setRows((await api('queue')).rows || []); useEffect(() => { load(); }, []);
+  const [tv, setTv] = useState(0), [rows, setRows] = useState([]); const load = async () => setRows((await api('queue')).rows || []); useEffect(() => { load(); }, []);
   const tag = async (r) => { const t = prompt('Tag text', 'Not good to use'); if (t) { await api('tag', { old_paper: r.old_paper, q_no: r.q_no, tag: t }); load(); } };
   const dismiss = async (r) => { await api('tag', { old_paper: r.old_paper, q_no: r.q_no, tag: null }); load(); };
   const [reps, setReps] = useState([]); const loadR = async () => setReps((await api('reports')).rows || []); useEffect(() => { loadR(); }, []);
@@ -167,7 +174,7 @@ function Admin() {
     {reps.map(r => <div className="card" key={r.id}>{r.kind === 's' ? <><b>{qs(r.p_paper, r.p_q)}</b><br />A (saved by {r.e_by || '?'}): {r.e_paper ? `2026 Quiz no ${r.e_old} Que ${r.e_qno}` : '(removed)'}<br />B (reported by {r.reported_by}): 2026 Quiz no {r.old_paper} Que {r.q_no}<br /></> : <><b>2026 Quiz no {r.old_paper} Que {r.q_no}</b><br />
       A (saved by {r.e_by || '?'}): {r.e_paper ? qs(r.e_paper, r.e_q) : '(removed)'}<br />B (reported by {r.reported_by}): {qs(r.p_paper, r.p_q)}<br /></>}
       <button onClick={() => resolve(r.id, 'a')}>Keep A (drop B)</button><button onClick={() => resolve(r.id, 'b')}>Keep B (replace A)</button></div>)}</div>
-  <div className="card"><h3>Removal/refining needed ({rows.length})</h3>{rows.length === 0 && <span className="note">Nothing waiting</span>}{rows.map(r => <Fix key={r.old_paper + '-' + r.q_no} r={r} done={load} />)}</div></>;
+  <div className="card"><h3>Removal/refining needed ({rows.length})</h3>{rows.length === 0 && <span className="note">Nothing waiting</span>}{rows.map(r => <Fix key={r.old_paper + '-' + r.q_no} r={r} done={() => { load(); setTv(x => x + 1); }} />)}</div><Tagged key={tv} /></>;
 }
 
 const keyOf = r => r.old_paper + '-' + r.q_no;

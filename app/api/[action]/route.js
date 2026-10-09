@@ -121,6 +121,7 @@ export async function POST(req, { params }) {
       await sql`update questions set refined_by=${b.by.trim()}, tag=null, flagged=false, updated_at=now() where old_paper=${b.old_paper} and q_no=${b.q_no}`;
       await log('Marked refined', `2026 Quiz ${b.old_paper} Que ${b.q_no} refined by ${b.by.trim()} (${b.fname})`); return ok();
     }
+    if (a === 'tagged') return ok({ rows: await sql`select old_paper,q_no,topic,lesson,tag from questions where tag is not null order by old_paper,q_no` });
     if (a === 'reports') return ok({ rows: await sql`select r.*, x.new_paper as e_paper, x.new_q as e_q, x.old_paper as e_old, x.q_no as e_qno, x."by" as e_by from reports r left join used x on x.id=r.existing_id where not r.done order by r.id` });
     if (a === 'resolve') {
       const r = (await sql`select * from reports where id=${b.id}`)[0]; if (!r) return err('Not found');
@@ -134,7 +135,7 @@ export async function POST(req, { params }) {
       await sql`update reports set done=true where id=${b.id}`; await log('Resolved duplicate report', `kept ${b.keep === 'b' ? 'B (reported)' : 'A (saved)'} for 2026 Quiz ${r.old_paper} Que ${r.q_no}`); return ok();
     }
     if (a === 'queue') return ok({ rows: await sql`select * from questions where flagged and tag is null order by old_paper,q_no` });
-    if (a === 'tag') { await log(b.tag ? 'Tagged question' : 'Dismissed bad-question report', `2026 Quiz ${b.old_paper} Que ${b.q_no}${b.tag ? ': ' + b.tag : ''}`); await sql`update questions set tag=${b.tag || null}, flagged=false where old_paper=${b.old_paper} and q_no=${b.q_no}`; return ok(); }
+    if (a === 'tag') { await log(b.tag ? 'Tagged question' : 'Removed label / dismissed report', `2026 Quiz ${b.old_paper} Que ${b.q_no}${b.tag ? ': ' + b.tag : ''}`); await sql`update questions set tag=${b.tag || null}, flagged=false where old_paper=${b.old_paper} and q_no=${b.q_no}`; return ok(); }
   } catch (e) { return err(e.message, 500); }
   return err('Unknown action', 404);
 }
