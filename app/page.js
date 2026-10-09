@@ -96,7 +96,7 @@ function Row({ r, mark }) {
   const report = async () => { if (!confirm('Report this as a bad question? An admin will check it.')) return; const x = await api('flag', { old_paper: r.old_paper, q_no: r.q_no }); x.ok ? setFl(true) : alert(x.error); };
   return <div className="card">2026 Quiz {r.old_paper} · Q{r.q_no} — {r.lesson && <b>[{r.lesson}] </b>}{r.topic} <Flag r={rr} /> <Dl r={rr} />
     {r.used.map((u, i) => <div key={i} className="note">Used again in 2027 quiz {u.p}{u.q ? ` Q${u.q}` : ''} — {dm(u.p)}</div>)}
-    <div>{mark && <button onClick={async () => { const p = prompt('2027 quiz number?'); if (p) { const x = await api('mark', { old_paper: r.old_paper, q_no: r.q_no, new_paper: n(p) }); alert(x.conflict ? `Already entered the 2027 Quiz no ${x.existing[0].new_paper}${x.existing[0].new_q ? ` Que ${x.existing[0].new_q}` : ''} for this question. Use the Check tab to report if it is wrong.` : x.ok ? 'Saved' : x.error); } }}>Mark taken</button>}{!rr.flagged && !r.tag && <button className="t" onClick={report}>⚑ Report as bad question</button>}</div></div>;
+    <div>{mark && <button onClick={async () => { const p = prompt('2027 quiz number?'); if (p) { const x = await api('mark', { old_paper: r.old_paper, q_no: r.q_no, new_paper: n(p) }); alert(x.conflict ? `Already entered the 2027 Quiz no ${x.existing[0].new_paper}${x.existing[0].new_q ? ` Que ${x.existing[0].new_q}` : ''} for this question. Use the Check tab to report if it is wrong.` : x.ok ? 'Saved' : x.error); } }}>Mark taken</button>}{!rr.flagged && !r.tag && <button className="t" onClick={report}>⚑ Report as a bad question</button>}</div></div>;
 }
 
 function Find() {
