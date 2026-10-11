@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getUser, makeToken } from '@/lib/auth';
-import { gem, getModel, listModels } from '@/lib/gemini';
+import { gem, getModel, listModels, isPreview } from '@/lib/gemini';
 const nm = t => (t || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 const key = r => nm(r.topic) || `o${r.old_paper}-${r.q_no}`;
 const rowsIn = (sql, lo, hi) => sql`select x.new_paper, x.new_q, x.old_paper, x.q_no, q.topic, q.lesson from used x left join questions q on q.old_paper=x.old_paper and q.q_no=x.q_no where x.new_paper between ${lo} and ${hi} order by x.new_paper, x.new_q nulls last, x.id`;
@@ -74,8 +74,8 @@ export async function POST(req, { params }) {
       rows.map((r, i) => ({ ...r, same: same.has(i), score: sc(r) })).sort((x, y) => y.same - x.same || y.score - x.score).forEach(r => (r.used.length ? taken : free).push(r));
       return ok({ same: free.filter(r => r.same), near: free.filter(r => !r.same), taken });
     }
-    if (a === 'models') return ok({ models: await listModels(), current: await getModel() });
-    if (a === 'setmodel') { await sql`insert into settings(k,v) values('model',${b.model}) on conflict(k) do update set v=excluded.v`; return ok(); }
+    if (a === 'models') { const all = await listModels(); return ok({ models: u.role === 'admin' ? all : all.filter(m => !isPreview(m)), current: await getModel() }); }
+    if (a === 'setmodel') { if (u.role !== 'admin' && isPreview(b.model || '')) return err('Admins only', 403); await sql`insert into settings(k,v) values('model',${b.model}) on conflict(k) do update set v=excluded.v`; return ok(); }
     const rowsOf = p => sql`select u.new_q,u.old_paper,u.q_no,q.topic,q.lesson,q.flagged,q.tag,q.refined_by,q.same_as from used u left join questions q on q.old_paper=u.old_paper and q.q_no=u.q_no where u.new_paper=${p} order by u.new_q nulls last, u.id`;
     if (a === 'paper') return ok({ rows: await rowsOf(b.paper) });
     if (a === 'recent') {
