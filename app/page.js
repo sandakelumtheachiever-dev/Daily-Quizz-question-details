@@ -32,7 +32,7 @@ export default function Home() {
       <p>Hi {user.name} ({user.role}) <button className="t" onClick={async () => { await api('logout'); setUser(null); }}>Log out</button></p>
       {[['check', '1. Check question'], ['find', '2. Find by topic'], ['add', '3. Add topics'], ['recent', '4. Recently taken'], ['refined', 'Refined questions'], ['log', 'Activity log'], ...(user.role === 'admin' ? [['import', 'Import topics'], ['admin', 'Admin queue']] : [])].map(([k, l]) => <button key={k} className={'t ' + (tab === k ? 'on' : '')} onClick={() => setTab(k)}>{l}</button>)}
       {tab === 'check' && <Check />}{tab === 'find' && <Find />}{tab === 'add' && <Add user={user} />}{tab === 'recent' && <Recent />}{tab === 'import' && <Import />}{tab === 'log' && <Log />}{tab === 'refined' && <Refined user={user} />}{tab === 'admin' && <Admin />}
-      <Models />
+      {user.role === 'admin' && <Models />}
     </>}
     <footer>Developed by uvindu sandakelum</footer>
   </main>;
