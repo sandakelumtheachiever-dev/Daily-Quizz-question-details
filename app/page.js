@@ -71,8 +71,6 @@ function Check() {
     reset(); setM(x.status === 'updated' ? 'Updated ✅' : 'Saved ✅'); loadMarks();
   };
   const edit = x => { setP(String(x.old_paper)); setQ(String(x.q_no)); setNp(String(x.new_paper)); setNq(x.new_q ? String(x.new_q) : ''); setEditId(x.id); setConf(null); setR(null); setM(''); setE1(false); setE2(false); };
-  const [dOpen, setDOpen] = useState(false), [dp, setDp] = useState(''), [dq, setDq] = useState(''), [de, setDe] = useState(false);
-  const dupGo = async () => { if (inv(dp) || invQ(dq)) { setDe(true); return; } setDe(false); const x = await api('dup', { a_paper: r.old_paper, a_q: r.q_no, b_paper: n(dp), b_q: n(dq) }); if (!x.ok) { setMsg(x.error); return; } setDOpen(false); setDp(''); setDq(''); setMsg('Submitted ✅ An admin will check it.'); };
   const report = async () => { await api('report', { existing_id: conf.existing[0].id, kind: conf.kind, ...conf.prop }); reset(); setM('Thank you! We will check on it. You can enter the next one.'); };
   const del = async () => { if (!confirm('Delete this entry?')) return; await api('unmark', { id: editId }); reset(); setM('Deleted ✅'); loadMarks(); };
   return <><div className="card"><h3>Is this old question already used in 2027?</h3>
@@ -97,6 +95,8 @@ function Check() {
 function Row({ r, mark }) {
   const [fl, setFl] = useState(false), rr = { ...r, flagged: r.flagged || fl };
   const [open, setOpen] = useState(false), [np, setNp] = useState(''), [nq, setNq] = useState(''), [er, setEr] = useState(false), [msg, setMsg] = useState(''), [cf, setCf] = useState(null);
+  const [dOpen, setDOpen] = useState(false), [dp, setDp] = useState(''), [dq, setDq] = useState(''), [de, setDe] = useState(false);
+  const dupGo = async () => { if (inv(dp) || invQ(dq)) { setDe(true); return; } setDe(false); const x = await api('dup', { a_paper: r.old_paper, a_q: r.q_no, b_paper: n(dp), b_q: n(dq) }); if (!x.ok) { setMsg(x.error); return; } setDOpen(false); setDp(''); setDq(''); setMsg('Submitted ✅ An admin will check it.'); };
   const report = async () => { if (!confirm('Report this as a bad question? An admin will check it.')) return; const x = await api('flag', { old_paper: r.old_paper, q_no: r.q_no }); x.ok ? setFl(true) : alert(x.error); };
   const done = m => { setMsg(m); setOpen(false); setNp(''); setNq(''); setCf(null); setEr(false); };
   const save = async () => {
