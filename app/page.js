@@ -51,7 +51,8 @@ const Lesson = ({ v, set, e, ph }) => <select className={e ? 'bad' : ''} value={
 const inv = v => !(n(v) > 0);
 const invQ = v => !(n(v) >= 1 && n(v) <= 10);
 const cls = e => (e ? 'bad' : '');
-const Flag = ({ r }) => r.tag ? <span className="tag">⚠ {r.tag}</span> : r.flagged ? <span className="tag pend">⚑ Removal/refining needed</span> : r.refined_by ? <span className="tag ok">✅ Refined by {r.refined_by}</span> : null;
+const saText = v => { const [p, q] = String(v).split('-'); return `Same question in 2026 quiz ${p} Que ${q}`; };
+const Flag = ({ r }) => <>{r.tag ? <span className="tag">⚠ {r.tag}</span> : r.flagged ? <span className="tag pend">⚑ Removal/refining needed</span> : r.refined_by ? <span className="tag ok">✅ Refined by {r.refined_by}</span> : null}{r.same_as && <span className="tag same">🔁 {saText(r.same_as)}</span>}</>;
 const Dl = ({ r }) => r.refined_by && !r.flagged && !r.tag ? <a className="dl" href={`/api/file?old_paper=${r.old_paper}&q_no=${r.q_no}`}>⬇ Download refined question</a> : null;
 const Msg = ({ s, children }) => s ? <div className="err">{children}</div> : null;
 
@@ -63,13 +64,15 @@ function Check() {
   const reset = () => { setP(''); setQ(''); setNp(''); setNq(''); setR(null); setEditId(null); setConf(null); setE1(false); setE2(false); };
   const go = async () => { if (inv(p) || invQ(q)) { setE1(true); return; } setE1(false); setM(''); setConf(null); setR(await api('check', { old_paper: n(p), q_no: n(q) })); };
   const mark = async () => {
-    if (inv(p) || invQ(q) || inv(np) || (nq && invQ(nq))) { setE2(true); return; } setE2(false);
+    if (inv(p) || invQ(q) || inv(np) || invQ(nq)) { setE2(true); return; } setE2(false);
     const x = await api('mark', { id: editId, old_paper: n(p), q_no: n(q), new_paper: n(np), new_q: n(nq) });
     if (!x.ok) { setM(x.error); return; }
     if (x.conflict) { setConf({ kind: x.kind, existing: x.existing, prop: { old_paper: n(p), q_no: n(q), new_paper: n(np), new_q: n(nq) || null } }); return; }
     reset(); setM(x.status === 'updated' ? 'Updated ✅' : 'Saved ✅'); loadMarks();
   };
   const edit = x => { setP(String(x.old_paper)); setQ(String(x.q_no)); setNp(String(x.new_paper)); setNq(x.new_q ? String(x.new_q) : ''); setEditId(x.id); setConf(null); setR(null); setM(''); setE1(false); setE2(false); };
+  const [dOpen, setDOpen] = useState(false), [dp, setDp] = useState(''), [dq, setDq] = useState(''), [de, setDe] = useState(false);
+  const dupGo = async () => { if (inv(dp) || invQ(dq)) { setDe(true); return; } setDe(false); const x = await api('dup', { a_paper: r.old_paper, a_q: r.q_no, b_paper: n(dp), b_q: n(dq) }); if (!x.ok) { setMsg(x.error); return; } setDOpen(false); setDp(''); setDq(''); setMsg('Submitted ✅ An admin will check it.'); };
   const report = async () => { await api('report', { existing_id: conf.existing[0].id, kind: conf.kind, ...conf.prop }); reset(); setM('Thank you! We will check on it. You can enter the next one.'); };
   const del = async () => { if (!confirm('Delete this entry?')) return; await api('unmark', { id: editId }); reset(); setM('Deleted ✅'); loadMarks(); };
   return <><div className="card"><h3>Is this old question already used in 2027?</h3>
@@ -78,9 +81,9 @@ function Check() {
     {r && <>
       {r.question && <div className="card">{r.question.lesson && <b>[{r.question.lesson}] </b>}Topic: {r.question.topic} <Flag r={r.question} /> <Dl r={r.question} /></div>}
       {r.used.length ? r.used.map((u, i) => <div key={i} className="note">Taken for the 2027 quiz {u.new_paper}{u.new_q ? ` Q${u.new_q}` : ''} — {dm(u.new_paper)}</div>) : <div className="note">Not used yet ✅</div>}</>}
-    {(r || editId) && <><hr /><b>{editId ? 'Editing a saved entry:' : 'Mark as taken:'}</b><br /><input className={cls(e2 && inv(np))} placeholder="2027 quiz no" value={np} onChange={x => setNp(x.target.value)} /><input className={cls(e2 && nq && invQ(nq))} placeholder="2027 Q no" value={nq} onChange={x => setNq(x.target.value)} /><button onClick={mark}>{editId ? 'Update' : 'Save'}</button>
+    {(r || editId) && <><hr /><b>{editId ? 'Editing a saved entry:' : 'Mark as taken:'}</b><br /><input className={cls(e2 && inv(np))} placeholder="2027 quiz no" value={np} onChange={x => setNp(x.target.value)} /><input className={cls(e2 && invQ(nq))} placeholder="2027 Q no" value={nq} onChange={x => setNq(x.target.value)} /><button onClick={mark}>{editId ? 'Update' : 'Save'}</button>
       {editId && <><button className="t" onClick={reset}>Cancel</button><button className="t" onClick={del}>Delete</button></>}
-      <Msg s={e2}>Enter the 2026 quiz no, a question no (1 to 10) and the 2027 quiz no</Msg>
+      <Msg s={e2}>Enter the 2026 quiz no, a question no (1 to 10) and the 2027 quiz no and question no</Msg>
       {conf && (() => { const sl = conf.kind === 's', same = conf.existing.some(e => sl ? e.old_paper === conf.prop.old_paper && e.q_no === conf.prop.q_no : e.new_paper === conf.prop.new_paper && (e.new_q || null) === conf.prop.new_q);
         return <div className="card"><span className="err">{sl ? 'This place is already filled:' : 'Already entered for this question:'}</span>
           {conf.existing.map(e => <div key={e.id}>2027 Quiz no {e.new_paper}{e.new_q ? ` Que ${e.new_q}` : ''}{sl && ` = 2026 Quiz no ${e.old_paper} Que ${e.q_no}`} (entered by {e.by})</div>)}
@@ -93,10 +96,31 @@ function Check() {
 
 function Row({ r, mark }) {
   const [fl, setFl] = useState(false), rr = { ...r, flagged: r.flagged || fl };
+  const [open, setOpen] = useState(false), [np, setNp] = useState(''), [nq, setNq] = useState(''), [er, setEr] = useState(false), [msg, setMsg] = useState(''), [cf, setCf] = useState(null);
   const report = async () => { if (!confirm('Report this as a bad question? An admin will check it.')) return; const x = await api('flag', { old_paper: r.old_paper, q_no: r.q_no }); x.ok ? setFl(true) : alert(x.error); };
+  const done = m => { setMsg(m); setOpen(false); setNp(''); setNq(''); setCf(null); setEr(false); };
+  const save = async () => {
+    if (inv(np) || invQ(nq)) { setEr(true); return; } setEr(false);
+    const prop = { old_paper: r.old_paper, q_no: r.q_no, new_paper: n(np), new_q: n(nq) };
+    const x = await api('mark', prop);
+    if (!x.ok) { setMsg(x.error); return; }
+    if (x.conflict) { setCf({ kind: x.kind, existing: x.existing, prop }); return; }
+    done(`Saved ✅ 2027 Quiz ${prop.new_paper} Que ${prop.new_q}`);
+  };
+  const rep2 = async () => { await api('report', { existing_id: cf.existing[0].id, kind: cf.kind, ...cf.prop }); done('Thank you! We will check on it. You can enter the next one.'); };
   return <div className="card">2026 Quiz {r.old_paper} · Q{r.q_no} — {r.lesson && <b>[{r.lesson}] </b>}{r.topic} <Flag r={rr} /> <Dl r={rr} />
     {r.used.map((u, i) => <div key={i} className="note">Used again in 2027 quiz {u.p}{u.q ? ` Q${u.q}` : ''} — {dm(u.p)}</div>)}
-    <div>{mark && <button onClick={async () => { const p = prompt('2027 quiz number?'); if (p) { const x = await api('mark', { old_paper: r.old_paper, q_no: r.q_no, new_paper: n(p) }); alert(x.conflict ? `Already entered the 2027 Quiz no ${x.existing[0].new_paper}${x.existing[0].new_q ? ` Que ${x.existing[0].new_q}` : ''} for this question. Use the Check tab to report if it is wrong.` : x.ok ? 'Saved' : x.error); } }}>Mark taken</button>}{!rr.flagged && !r.tag && <button className="t" onClick={report}>⚑ Report as a bad question</button>}</div></div>;
+    <div>{mark && <button onClick={() => { setOpen(true); setMsg(''); }}>Mark taken</button>}
+      {open && <span> <input style={{ width: 120 }} className={cls(er && inv(np))} placeholder="2027 quiz no" value={np} onChange={x => setNp(x.target.value)} /><input style={{ width: 100 }} className={cls(er && invQ(nq))} placeholder="Que no" value={nq} onChange={x => setNq(x.target.value)} onKeyDown={x => x.key === 'Enter' && save()} /><button onClick={save}>Save</button><button className="t" onClick={() => { setOpen(false); setEr(false); setCf(null); }}>Cancel</button> </span>}
+      {!rr.flagged && !r.tag && <button className="t" onClick={report}>⚑ Report as a bad question</button>}<button className="t" onClick={() => { setDOpen(!dOpen); setMsg(''); }}>🔁 Report as repeated in the 2026 series</button></div>
+    {dOpen && <div>Same as 2026 quiz no <input style={{ width: 110 }} className={cls(de && inv(dp))} value={dp} onChange={x => setDp(x.target.value)} /> Que <input style={{ width: 80 }} className={cls(de && invQ(dq))} value={dq} onChange={x => setDq(x.target.value)} /> <button onClick={dupGo}>Submit</button></div>}
+    {de && <div className="err">Enter the 2026 quiz number and a question number from 1 to 10</div>}
+    {er && <div className="err">Enter the 2027 quiz number and a question number from 1 to 10</div>}
+    {cf && (() => { const sl = cf.kind === 's', same = cf.existing.some(e => sl ? e.old_paper === cf.prop.old_paper && e.q_no === cf.prop.q_no : e.new_paper === cf.prop.new_paper && (e.new_q || null) === cf.prop.new_q);
+      return <div className="card"><span className="err">{sl ? 'This place is already filled:' : 'Already entered for this question:'}</span>
+        {cf.existing.map(e => <div key={e.id}>2027 Quiz no {e.new_paper}{e.new_q ? ` Que ${e.new_q}` : ''}{sl && ` = 2026 Quiz no ${e.old_paper} Que ${e.q_no}`} (entered by {e.by})</div>)}
+        {!same && <button onClick={rep2}>Report</button>}<button className="t" onClick={() => setCf(null)}>{same ? 'OK' : 'Cancel'}</button></div>; })()}
+    {msg && <div className="note">{msg}</div>}</div>;
 }
 
 function Find() {
@@ -112,27 +136,39 @@ function Find() {
 }
 
 function Add({ user }) {
-  const [p, setP] = useState(''), [q, setQ] = useState(''), [t, setT] = useState(''), [bad, setBad] = useState(false), [lesson, setL] = useState('');
+  const [p, setP] = useState(''), [q, setQ] = useState(''), [t, setT] = useState(''), [bad, setBad] = useState(false), [lesson, setL] = useState(''), [dupOn, setDupOn] = useState(false), [dp, setDp] = useState(''), [dq, setDq] = useState('');
   const [m, setM] = useState(null), [er, setEr] = useState(false), [note, setNote] = useState(null), [mine, setMine] = useState([]);
   const loadMine = async () => setMine((await api('mine')).rows || []);
   useEffect(() => { loadMine(); }, []);
   useEffect(() => { setNote(null); if (n(p) > 0 && n(q) > 0) api('check', { old_paper: n(p), q_no: n(q) }).then(r => setNote(r.question)); }, [p, q]);
   const go = async () => {
-    if (inv(p) || invQ(q) || !t.trim() || !lesson) { setEr(true); setM(null); return; } setEr(false);
+    if (inv(p) || invQ(q) || !t.trim() || !lesson || (dupOn && (inv(dp) || invQ(dq)))) { setEr(true); setM(null); return; } setEr(false);
     if (note && note.added_by !== user.name && !confirm(`User ${note.added_by} already put the topic "${note.topic}" to this question. Replace it?`)) return;
     const r = await api('add', { old_paper: n(p), q_no: n(q), topic: t, lesson, bad });
     if (!r.ok) { setM({ e: 1, s: r.error }); return; }
-    setM({ s: r.status === 'updated' ? 'Updated ✅' : 'Saved ✅' }); setQ(n(q) < 10 ? String(n(q) + 1) : ''); setT(''); setBad(false); loadMine();
+    if (dupOn) { await api('dup', { a_paper: n(p), a_q: n(q), b_paper: n(dp), b_q: n(dq) }); setDupOn(false); setDp(''); setDq(''); }
+    setM({ s: (r.status === 'updated' ? 'Updated ✅' : 'Saved ✅') + (dupOn ? ' · repeat report submitted' : '') }); setQ(n(q) < 10 ? String(n(q) + 1) : ''); setT(''); setBad(false); loadMine();
   };
   return <div className="card"><h3>Add topic of an old question</h3>
     <input className={cls(er && inv(p))} placeholder="2026 quiz no" value={p} onChange={x => setP(x.target.value)} /><input className={cls(er && invQ(q))} placeholder="Question no" value={q} onChange={x => setQ(x.target.value)} /><Lesson v={lesson} set={setL} e={er && !lesson} ph="Lesson…" /><br />
     {note && <div className="note">ℹ {note.added_by === user.name ? 'You' : `User ${note.added_by}`} already put the topic to this question: "{note.topic}"</div>}
     <input className={cls(er && !t.trim())} style={{ width: '90%' }} placeholder="Topic" value={t} onChange={x => setT(x.target.value)} onKeyDown={x => x.key === 'Enter' && go()} /><br />
     <label><input type="checkbox" checked={bad} onChange={x => setBad(x.target.checked)} /> This is a bad question</label><br />
-    <Msg s={er}>Enter {[inv(p) && 'the quiz number', invQ(q) && 'a question number (1 to 10)', !t.trim() && 'the topic', !lesson && 'the lesson'].filter(Boolean).join(', ')}</Msg>
+    <label><input type="checkbox" checked={dupOn} onChange={x => setDupOn(x.target.checked)} /> This question is repeated in the 2026 series</label><br />
+    {dupOn && <div>Same as 2026 quiz no <input style={{ width: 110 }} className={cls(er && inv(dp))} value={dp} onChange={x => setDp(x.target.value)} /> Que <input style={{ width: 80 }} className={cls(er && invQ(dq))} value={dq} onChange={x => setDq(x.target.value)} /></div>}
+    <Msg s={er}>Enter {[inv(p) && 'the quiz number', invQ(q) && 'a question number (1 to 10)', !t.trim() && 'the topic', !lesson && 'the lesson', dupOn && (inv(dp) || invQ(dq)) && 'the repeated question quiz no and que no (1 to 10)'].filter(Boolean).join(', ')}</Msg>
     <button onClick={go}>Save</button> {m && <span className={m.e ? 'err' : 'note'}>{m.s}</span>}
     {mine.length > 0 && <><h3>Your last added</h3>{mine.map(r => <div className="card" key={r.old_paper + '-' + r.q_no}>Quiz {r.old_paper} · Q{r.q_no} — {r.lesson && <b>[{r.lesson}] </b>}{r.topic} <Flag r={r} /> <button className="t" onClick={() => { setP(String(r.old_paper)); setQ(String(r.q_no)); setT(r.topic); setL(r.lesson || ''); setBad(false); setM(null); }}>Edit</button></div>)}</>}
   </div>;
+}
+
+function Dups() {
+  const [rows, setRows] = useState([]); const load = async () => setRows((await api('dups')).rows || []); useEffect(() => { load(); }, []);
+  const go = async (id, same) => { await api('dupresolve', { id, same }); load(); };
+  const L = (p, q, l, t) => <div>2026 Quiz {p} Que {q} — {l && <b>[{l}] </b>}{t || '(topic not entered)'}</div>;
+  return <div className="card"><h3>Repeated in the 2026 series ({rows.length})</h3>{rows.length === 0 && <span className="note">No reports</span>}
+    {rows.map(r => <div className="card" key={r.id}>{L(r.a_paper, r.a_q, r.la, r.ta)}{L(r.b_paper, r.b_q, r.lb, r.tb)}<span className="note">reported by {r.reported_by}</span><br />
+      <button onClick={() => go(r.id, true)}>Same question (tag both)</button><button className="t" onClick={() => go(r.id, false)}>Not the same</button></div>)}</div>;
 }
 
 function Tagged() {
@@ -148,7 +184,7 @@ function Fix({ r, done }) {
   const refine = async () => { if (!by.trim() || !f) { setM('Enter the name and choose the Word file'); return; } const x = await api('refine', { old_paper: r.old_paper, q_no: r.q_no, by: by.trim(), fname: f.name, b64: f.b64 }); x.ok ? done() : setM(x.error); };
   const act = async tag => { await api('tag', { old_paper: r.old_paper, q_no: r.q_no, tag }); done(); };
   return <div className="card"><b>2026 Quiz {r.old_paper} Q{r.q_no}</b> {r.lesson && `[${r.lesson}] `}— {r.topic} <span className="note">(topic added by {r.added_by})</span><br />
-    <button onClick={() => act("Don't use this question")}>Don't use this question</button><button className="t" onClick={() => act(null)}>Dismiss (it is fine)</button>
+    <div>{['out of syllabus', 'not in syllabus', 'not good and refining is not worth it'].map(x => <button key={x} className="sb" onClick={() => act("Don't use this: " + x)}>Don't use this: {x}</button>)}<button className="t sb" onClick={() => act(null)}>Dismiss (it is fine)</button></div>
     <div style={{ marginTop: 8 }}><b>Refined it?</b> <input placeholder="Refined by (name)" value={by} onChange={x => setBy(x.target.value)} /><input type="file" accept=".doc,.docx" onChange={pick} /><button onClick={refine}>Mark refined</button> <span className="err">{m}</span></div></div>;
 }
 
@@ -174,7 +210,7 @@ function Admin() {
     {reps.map(r => <div className="card" key={r.id}>{r.kind === 's' ? <><b>{qs(r.p_paper, r.p_q)}</b><br />A (saved by {r.e_by || '?'}): {r.e_paper ? `2026 Quiz no ${r.e_old} Que ${r.e_qno}` : '(removed)'}<br />B (reported by {r.reported_by}): 2026 Quiz no {r.old_paper} Que {r.q_no}<br /></> : <><b>2026 Quiz no {r.old_paper} Que {r.q_no}</b><br />
       A (saved by {r.e_by || '?'}): {r.e_paper ? qs(r.e_paper, r.e_q) : '(removed)'}<br />B (reported by {r.reported_by}): {qs(r.p_paper, r.p_q)}<br /></>}
       <button onClick={() => resolve(r.id, 'a')}>Keep A (drop B)</button><button onClick={() => resolve(r.id, 'b')}>Keep B (replace A)</button></div>)}</div>
-  <div className="card"><h3>Removal/refining needed ({rows.length})</h3>{rows.length === 0 && <span className="note">Nothing waiting</span>}{rows.map(r => <Fix key={r.old_paper + '-' + r.q_no} r={r} done={() => { load(); setTv(x => x + 1); }} />)}</div><Tagged key={tv} /></>;
+  <div className="card"><h3>Removal/refining needed ({rows.length})</h3>{rows.length === 0 && <span className="note">Nothing waiting</span>}{rows.map(r => <Fix key={r.old_paper + '-' + r.q_no} r={r} done={() => { load(); setTv(x => x + 1); }} />)}</div><Dups /><Tagged key={tv} /></>;
 }
 
 const keyOf = r => r.old_paper + '-' + r.q_no;
@@ -190,7 +226,7 @@ function Recent() {
   const [sp, setSp] = useState(''), [sr, setSr] = useState(null), [e1, setE1] = useState(false), [rec, setRec] = useState([]);
   const [cp, setCp] = useState(''), [cr, setCr] = useState(null), [e2, setE2] = useState(false);
   const [ta, setTa] = useState(''), [tb, setTb] = useState(''), [tr, setTr] = useState(null), [e3, setE3] = useState(false);
-  useEffect(() => { api('recent').then(r => setRec(r.papers || [])); }, []);
+  useEffect(() => { api('recent', { today: A.paper - dd(A.paper) }).then(r => setRec(r.papers || [])); }, []);
   const search = async () => { if (inv(sp)) { setE1(true); return; } setE1(false); setSr({ paper: n(sp), rows: (await api('paper', { paper: n(sp) })).rows || [] }); };
   const cmp = async () => { if (inv(cp)) { setE2(true); return; } setE2(false); setCr({ paper: n(cp), ...(await api('compare', { paper: n(cp) })) }); };
   const cmp2 = async () => {
@@ -202,10 +238,10 @@ function Recent() {
   return <div className="sm">
     <div className="card"><h3>Search an earlier paper</h3><input className={cls(e1)} placeholder="2027 quiz no" value={sp} onChange={x => setSp(x.target.value)} onKeyDown={x => x.key === 'Enter' && search()} /><button onClick={search}>Search</button>
       <Msg s={e1}>Enter a quiz number</Msg>{sr && <Tbl {...sr} />}</div>
-    <h3>Most recently entered papers</h3>{rec.length === 0 && <span className="note">No data yet</span>}{rec.map(p => <Tbl key={p.paper} {...p} />)}
-    <div className="card"><h3>Find repeats in the previous 90 days</h3><input className={cls(e2)} placeholder="2027 quiz no" value={cp} onChange={x => setCp(x.target.value)} /><button onClick={cmp}>Compare</button>
+    <h3>Last 7 days (papers {A.paper - dd(A.paper) - 6} to {A.paper - dd(A.paper)})</h3>{rec.length === 0 && <span className="note">No taken questions in the last 7 days</span>}{rec.map(p => <Tbl key={p.paper} {...p} />)}
+    <div className="card"><h3>Find repeats in the previous 45 days</h3><input className={cls(e2)} placeholder="2027 quiz no" value={cp} onChange={x => setCp(x.target.value)} /><button onClick={cmp}>Compare</button>
       <Msg s={e2}>Enter a quiz number</Msg>
-      {cr && (cr.total === 0 ? <div className="err">This paper doesn't have taken questions from the 2026 series, or no data entered.</div> : cr.rows.length === 0 ? <div className="note">No repeated questions with papers {Math.max(1, cr.paper - 90)} to {cr.paper - 1} ✅</div> :
+      {cr && (cr.total === 0 ? <div className="err">This paper doesn't have taken questions from the 2026 series, or no data entered.</div> : cr.rows.length === 0 ? <div className="note">No repeated questions with papers {Math.max(1, cr.paper - 45)} to {cr.paper - 1} ✅</div> :
         cr.rows.map(r => <div className="card" key={keyOf(r)}><b>2027 Quiz {cr.paper} · Q{r.new_q || '?'}</b> = 2026 Quiz {r.old_paper} Que {r.q_no}{r.lesson && ` [${r.lesson}]`}<br />{r.topic}
           {r.hits.map((h, i) => <div key={i} className="note">↳ also in 2027 Quiz {h.paper}{h.q ? ` Que ${h.q}` : ''} · {h.gap} day{h.gap === 1 ? '' : 's'} earlier</div>)}</div>))}</div>
     <div className="card"><h3>Compare any two papers</h3><input className={cls(e3 && inv(ta))} placeholder="Paper A" value={ta} onChange={x => setTa(x.target.value)} /><input className={cls(e3 && inv(tb))} placeholder="Paper B" value={tb} onChange={x => setTb(x.target.value)} /><button onClick={cmp2}>Compare</button>

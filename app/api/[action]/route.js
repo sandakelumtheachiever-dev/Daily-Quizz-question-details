@@ -26,15 +26,15 @@ export async function POST(req, { params }) {
   try {
     if (a === 'check') {
       const q = await sql`select * from questions where old_paper=${b.old_paper} and q_no=${b.q_no}`;
-      const used = await sql`select new_paper,new_q from used where old_paper=${b.old_paper} and q_no=${b.q_no} order by new_paper`;
+      const used = await sql`select new_paper,new_q from used where (old_paper=${b.old_paper} and q_no=${b.q_no}) or concat_ws('-',old_paper,q_no)=(select same_as from questions where old_paper=${b.old_paper} and q_no=${b.q_no}) order by new_paper`;
       return ok({ question: q[0] || null, used });
     }
     if (a === 'mark') {
       if (!(b.old_paper > 0) || !(b.new_paper > 0)) return err('Please fill all numbers');
-      if (!(b.q_no >= 1 && b.q_no <= 10) || (b.new_q && !(b.new_q >= 1 && b.new_q <= 10))) return err('Question number must be 1 to 10');
+      if (!(b.q_no >= 1 && b.q_no <= 10) || !(b.new_q >= 1 && b.new_q <= 10)) return err('Question number must be 1 to 10');
       const sl = b.new_q ? await sql`select id,old_paper,q_no,new_paper,new_q,"by" from used where new_paper=${b.new_paper} and new_q=${b.new_q} and id <> ${b.id || 0} order by id` : [];
       if (sl.length) return ok({ conflict: true, kind: 's', existing: sl });
-      const ex = await sql`select id,old_paper,q_no,new_paper,new_q,"by" from used where old_paper=${b.old_paper} and q_no=${b.q_no} and id <> ${b.id || 0} order by id`;
+      const ex = await sql`select id,old_paper,q_no,new_paper,new_q,"by" from used where ((old_paper=${b.old_paper} and q_no=${b.q_no}) or concat_ws('-',old_paper,q_no)=(select same_as from questions where old_paper=${b.old_paper} and q_no=${b.q_no})) and id <> ${b.id || 0} order by id`;
       if (ex.length) return ok({ conflict: true, kind: 'q', existing: ex });
       const nw = `2026 Quiz ${b.old_paper} Que ${b.q_no} → 2027 Quiz ${b.new_paper} Que ${b.new_q || '-'}`;
       if (b.id) {
@@ -57,16 +57,16 @@ export async function POST(req, { params }) {
       await log(prev.length ? 'Updated topic' : 'Added topic', `2026 Quiz ${b.old_paper} Que ${b.q_no} [${b.lesson}] ${b.topic.trim()}${b.bad ? ' (flagged as bad)' : ''}`);
       return ok({ status: prev.length ? 'updated' : 'saved' });
     }
-    if (a === 'mine') return ok({ rows: await sql`select old_paper,q_no,topic,lesson,flagged,tag,refined_by from questions where added_by=${u.name} order by updated_at desc limit 5` });
+    if (a === 'mine') return ok({ rows: await sql`select old_paper,q_no,topic,lesson,flagged,tag,refined_by,same_as from questions where added_by=${u.name} order by updated_at desc limit 5` });
     if (a === 'search') {
       const q = (b.topic || '').trim().toLowerCase(); if (!q && !b.lesson) return ok({ same: [], near: [], taken: [] });
       if (!q) {
-        const all = await sql`select q.*, coalesce((select json_agg(json_build_object('p',new_paper,'q',new_q)) from used x where x.old_paper=q.old_paper and x.q_no=q.q_no),'[]') as used from questions q where lesson=${b.lesson} order by old_paper,q_no limit 500`;
+        const all = await sql`select q.*, coalesce((select json_agg(json_build_object('p',new_paper,'q',new_q)) from used x where (x.old_paper=q.old_paper and x.q_no=q.q_no) or concat_ws('-',x.old_paper,x.q_no)=q.same_as),'[]') as used from questions q where lesson=${b.lesson} order by old_paper,q_no limit 500`;
         return ok({ same: all.filter(r => !r.used.length), near: [], taken: all.filter(r => r.used.length) });
       }
       let kws = q.split(/\s+/).filter(w => w.length > 2);
       try { const k = await gem(`Exam topic: "${q}". Return JSON {"keywords":[up to 12 short lowercase keywords/synonyms/abbreviations a similar quiz topic might contain]}`); kws = [...new Set([...kws, ...k.keywords.map(x => String(x).toLowerCase())])]; } catch (e) {}
-      const rows = await sql.query(`select q.*, coalesce((select json_agg(json_build_object('p',new_paper,'q',new_q)) from used x where x.old_paper=q.old_paper and x.q_no=q.q_no),'[]') as used from questions q where lower(topic) like any($1) and ($2::text is null or lesson=$2) limit 200`, [kws.map(k => `%${k}%`), b.lesson || null]);
+      const rows = await sql.query(`select q.*, coalesce((select json_agg(json_build_object('p',new_paper,'q',new_q)) from used x where (x.old_paper=q.old_paper and x.q_no=q.q_no) or concat_ws('-',x.old_paper,x.q_no)=q.same_as),'[]') as used from questions q where lower(topic) like any($1) and ($2::text is null or lesson=$2) limit 200`, [kws.map(k => `%${k}%`), b.lesson || null]);
       let same = new Set();
       if (rows.length) try { const r = await gem(`User wants questions on: "${q}". Candidates: ${JSON.stringify(rows.map((r, i) => [i, r.topic]))}. Return JSON {"same":[indexes of candidates that are essentially the SAME topic]}`); same = new Set(r.same); } catch (e) { rows.forEach((r, i) => r.topic.toLowerCase().includes(q) && same.add(i)); }
       const sc = r => kws.filter(k => r.topic.toLowerCase().includes(k)).length;
@@ -76,15 +76,16 @@ export async function POST(req, { params }) {
     }
     if (a === 'models') return ok({ models: await listModels(), current: await getModel() });
     if (a === 'setmodel') { await sql`insert into settings(k,v) values('model',${b.model}) on conflict(k) do update set v=excluded.v`; return ok(); }
-    const rowsOf = p => sql`select u.new_q,u.old_paper,u.q_no,q.topic,q.lesson,q.flagged,q.tag,q.refined_by from used u left join questions q on q.old_paper=u.old_paper and q.q_no=u.q_no where u.new_paper=${p} order by u.new_q nulls last, u.id`;
+    const rowsOf = p => sql`select u.new_q,u.old_paper,u.q_no,q.topic,q.lesson,q.flagged,q.tag,q.refined_by,q.same_as from used u left join questions q on q.old_paper=u.old_paper and q.q_no=u.q_no where u.new_paper=${p} order by u.new_q nulls last, u.id`;
     if (a === 'paper') return ok({ rows: await rowsOf(b.paper) });
     if (a === 'recent') {
-      const ps = await sql`select new_paper from used group by new_paper order by max(id) desc limit 3`;
+      const t = parseInt(b.today) || 0;
+      const ps = await sql`select distinct new_paper from used where new_paper between ${t - 6} and ${t} order by new_paper desc`;
       return ok({ papers: await Promise.all(ps.map(async x => ({ paper: x.new_paper, rows: await rowsOf(x.new_paper) }))) });
     }
     if (a === 'compare') {
       const tot = await sql`select count(*)::int as c from used where new_paper=${b.paper}`;
-      const rr = await sql`select a.new_q, a.old_paper, a.q_no, q.topic, q.lesson, b.new_paper as bp, b.new_q as bq from used a join used b on b.old_paper=a.old_paper and b.q_no=a.q_no and b.new_paper<a.new_paper and b.new_paper>=a.new_paper-90 left join questions q on q.old_paper=a.old_paper and q.q_no=a.q_no where a.new_paper=${b.paper} order by a.new_q nulls last, b.new_paper desc`;
+      const rr = await sql`select a.new_q, a.old_paper, a.q_no, q.topic, q.lesson, b.new_paper as bp, b.new_q as bq from used a join used b on b.old_paper=a.old_paper and b.q_no=a.q_no and b.new_paper<a.new_paper and b.new_paper>=a.new_paper-45 left join questions q on q.old_paper=a.old_paper and q.q_no=a.q_no where a.new_paper=${b.paper} order by a.new_q nulls last, b.new_paper desc`;
       const g = new Map();
       rr.forEach(r => { const k = r.old_paper + '-' + r.q_no; if (!g.has(k)) g.set(k, { new_q: r.new_q, old_paper: r.old_paper, q_no: r.q_no, topic: r.topic, lesson: r.lesson, hits: [] }); g.get(k).hits.push({ paper: r.bp, q: r.bq, gap: b.paper - r.bp }); });
       return ok({ total: tot[0].c, rows: [...g.values()] });
@@ -94,6 +95,13 @@ export async function POST(req, { params }) {
       const x = await sql`update questions set flagged=true where old_paper=${b.old_paper} and q_no=${b.q_no} returning topic`;
       if (!x.length) return err('Question not found');
       await log('Reported bad question', `2026 Quiz ${b.old_paper} Que ${b.q_no}: ${x[0].topic}`); return ok();
+    }
+    if (a === 'dup') {
+      const A_ = [b.a_paper, b.b_paper].every(x => x > 0), Q_ = [b.a_q, b.b_q].every(x => x >= 1 && x <= 10);
+      if (!A_ || !Q_) return err('Enter both quiz numbers and question numbers (1 to 10)');
+      if (b.a_paper === b.b_paper && b.a_q === b.b_q) return err('These are the same question');
+      await sql`insert into dups(a_paper,a_q,b_paper,b_q,reported_by) values(${b.a_paper},${b.a_q},${b.b_paper},${b.b_q},${u.name})`;
+      await log('Reported repeated question', `2026 Quiz ${b.a_paper} Que ${b.a_q} = 2026 Quiz ${b.b_paper} Que ${b.b_q}`); return ok();
     }
     if (a === 'refined') return ok({ rows: await sql`select old_paper,q_no,topic,lesson,refined_by from questions where refined_by is not null and tag is null and not flagged order by updated_at desc` });
     if (a === 'anchor') {
@@ -122,6 +130,16 @@ export async function POST(req, { params }) {
       await log('Marked refined', `2026 Quiz ${b.old_paper} Que ${b.q_no} refined by ${b.by.trim()} (${b.fname})`); return ok();
     }
     if (a === 'tagged') return ok({ rows: await sql`select old_paper,q_no,topic,lesson,tag from questions where tag is not null order by old_paper,q_no` });
+    if (a === 'dups') return ok({ rows: await sql`select d.*, qa.topic as ta, qa.lesson as la, qb.topic as tb, qb.lesson as lb from dups d left join questions qa on qa.old_paper=d.a_paper and qa.q_no=d.a_q left join questions qb on qb.old_paper=d.b_paper and qb.q_no=d.b_q where not d.done order by d.id` });
+    if (a === 'dupresolve') {
+      const d = (await sql`select * from dups where id=${b.id}`)[0]; if (!d) return err('Not found');
+      if (b.same) {
+        await sql`update questions set same_as=${d.b_paper + '-' + d.b_q} where old_paper=${d.a_paper} and q_no=${d.a_q}`;
+        await sql`update questions set same_as=${d.a_paper + '-' + d.a_q} where old_paper=${d.b_paper} and q_no=${d.b_q}`;
+        await log('Confirmed same question', `2026 Quiz ${d.a_paper} Que ${d.a_q} = 2026 Quiz ${d.b_paper} Que ${d.b_q}`);
+      }
+      await sql`update dups set done=true where id=${b.id}`; return ok();
+    }
     if (a === 'reports') return ok({ rows: await sql`select r.*, x.new_paper as e_paper, x.new_q as e_q, x.old_paper as e_old, x.q_no as e_qno, x."by" as e_by from reports r left join used x on x.id=r.existing_id where not r.done order by r.id` });
     if (a === 'resolve') {
       const r = (await sql`select * from reports where id=${b.id}`)[0]; if (!r) return err('Not found');
