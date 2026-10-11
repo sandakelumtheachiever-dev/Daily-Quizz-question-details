@@ -67,8 +67,9 @@ export async function POST(req, { params }) {
       let kws = q.split(/\s+/).filter(w => w.length > 2);
       try { const k = await gem(`Exam topic: "${q}". Return JSON {"keywords":[up to 12 short lowercase keywords/synonyms/abbreviations a similar quiz topic might contain]}`); kws = [...new Set([...kws, ...k.keywords.map(x => String(x).toLowerCase())])]; } catch (e) {}
       const rows = await sql.query(`select q.*, coalesce((select json_agg(json_build_object('p',new_paper,'q',new_q)) from used x where (x.old_paper=q.old_paper and x.q_no=q.q_no) or concat_ws('-',x.old_paper,x.q_no)=q.same_as),'[]') as used from questions q where lower(topic) like any($1) and ($2::text is null or lesson=$2) limit 200`, [kws.map(k => `%${k}%`), b.lesson || null]);
+      const sc0 = x => kws.filter(k => x.topic.toLowerCase().includes(k)).length; rows.sort((x, y) => sc0(y) - sc0(x));
       let same = new Set();
-      if (rows.length) try { const r = await gem(`User wants questions on: "${q}". Candidates: ${JSON.stringify(rows.map((r, i) => [i, r.topic]))}. Return JSON {"same":[indexes of candidates that are essentially the SAME topic]}`); same = new Set(r.same); } catch (e) { rows.forEach((r, i) => r.topic.toLowerCase().includes(q) && same.add(i)); }
+      if (rows.length) try { const r = await gem(`User wants questions on: "${q}". Candidates: ${JSON.stringify(rows.slice(0, 60).map((r, i) => [i, r.topic]))}. Return JSON {"same":[indexes of candidates that are essentially the SAME topic]}`); same = new Set(r.same); } catch (e) { rows.forEach((r, i) => r.topic.toLowerCase().includes(q) && same.add(i)); }
       const sc = r => kws.filter(k => r.topic.toLowerCase().includes(k)).length;
       const free = [], taken = [];
       rows.map((r, i) => ({ ...r, same: same.has(i), score: sc(r) })).sort((x, y) => y.same - x.same || y.score - x.score).forEach(r => (r.used.length ? taken : free).push(r));
