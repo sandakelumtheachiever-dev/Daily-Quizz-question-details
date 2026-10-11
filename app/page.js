@@ -53,7 +53,7 @@ const inv6 = v => !(n(v) >= 1 && n(v) <= 600);
 const invQ = v => !(n(v) >= 1 && n(v) <= 10);
 const cls = e => (e ? 'bad' : '');
 const saText = v => { const [p, q] = String(v).split('-'); return `Same question in 2026 quiz ${p} Que ${q}`; };
-const Flag = ({ r }) => <>{r.tag ? <span className="tag">⚠ {r.tag}</span> : r.flagged ? <span className="tag pend">⚑ Removal/refining needed</span> : r.refined_by ? <span className="tag ok">✅ Refined by {r.refined_by}</span> : null}{r.same_as && <span className="tag same">🔁 {saText(r.same_as)}</span>}</>;
+const Flag = ({ r }) => <>{r.tag ? <span className="tag">⚠ {r.tag}</span> : r.flagged ? <span className="tag pend">⚑ Removal/refining needed</span> : r.refined_by ? <span className="tag ok">✅ Refined by {r.refined_by}</span> : null}{r.same_as && <div><span className="tag same" style={{ display: 'inline-block', marginTop: 4 }}>🔗 {saText(r.same_as)}</span></div>}</>;
 const Dl = ({ r }) => r.refined_by && !r.flagged && !r.tag ? <a className="dl" href={`/api/file?old_paper=${r.old_paper}&q_no=${r.q_no}`}>⬇ Download refined question</a> : null;
 const Msg = ({ s, children }) => s ? <div className="err">{children}</div> : null;
 
