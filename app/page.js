@@ -56,6 +56,15 @@ const Flag = ({ r }) => <>{r.tag ? <span className="tag">⚠ {r.tag}</span> : r.
 const Dl = ({ r }) => r.refined_by && !r.flagged && !r.tag ? <a className="dl" href={`/api/file?old_paper=${r.old_paper}&q_no=${r.q_no}`}>⬇ Download refined question</a> : null;
 const Msg = ({ s, children }) => s ? <div className="err">{children}</div> : null;
 
+function ReportBar({ q }) {
+  const [fl, setFl] = useState(false), [dOpen, setDOpen] = useState(false), [dp, setDp] = useState(''), [dq, setDq] = useState(''), [de, setDe] = useState(false), [msg, setMsg] = useState('');
+  const bad = async () => { if (!confirm('Report this as a bad question? An admin will check it.')) return; const x = await api('flag', { old_paper: q.old_paper, q_no: q.q_no }); if (x.ok) { setFl(true); setMsg('Reported ✅ An admin will check it.'); } else alert(x.error); };
+  const dupGo = async () => { if (inv(dp) || invQ(dq)) { setDe(true); return; } setDe(false); const x = await api('dup', { a_paper: q.old_paper, a_q: q.q_no, b_paper: n(dp), b_q: n(dq) }); if (!x.ok) { setMsg(x.error); return; } setDOpen(false); setDp(''); setDq(''); setMsg('Submitted ✅ An admin will check it.'); };
+  return <div>{!q.flagged && !fl && !q.tag && <button className="t" onClick={bad}>⚑ Report as a bad question</button>}<button className="t" onClick={() => { setDOpen(!dOpen); setMsg(''); }}>🔁 Report as repeated in the 2026 series</button>
+    {dOpen && <div>Same as 2026 quiz no <input style={{ width: 110 }} className={cls(de && inv(dp))} value={dp} onChange={x => setDp(x.target.value)} /> Que <input style={{ width: 80 }} className={cls(de && invQ(dq))} value={dq} onChange={x => setDq(x.target.value)} /> <button onClick={dupGo}>Submit</button></div>}
+    {de && <div className="err">Enter the 2026 quiz number and a question number from 1 to 10</div>}{msg && <div className="note">{msg}</div>}</div>;
+}
+
 function Check() {
   const [p, setP] = useState(''), [q, setQ] = useState(''), [r, setR] = useState(null), [np, setNp] = useState(''), [nq, setNq] = useState('');
   const [e1, setE1] = useState(false), [e2, setE2] = useState(false), [m, setM] = useState(''), [marks, setMarks] = useState([]), [editId, setEditId] = useState(null), [conf, setConf] = useState(null);
@@ -77,7 +86,7 @@ function Check() {
     <input className={cls(e1 && inv(p))} placeholder="2026 quiz no" value={p} onChange={x => setP(x.target.value)} /><input className={cls(e1 && invQ(q))} placeholder="Question no" value={q} onChange={x => setQ(x.target.value)} onKeyDown={x => x.key === 'Enter' && go()} /><button onClick={go}>Check</button>
     <Msg s={e1}>Enter the quiz number and a question number from 1 to 10</Msg>
     {r && <>
-      {r.question && <div className="card">{r.question.lesson && <b>[{r.question.lesson}] </b>}Topic: {r.question.topic} <Flag r={r.question} /> <Dl r={r.question} /></div>}
+      {r.question && <div className="card">{r.question.lesson && <b>[{r.question.lesson}] </b>}Topic: {r.question.topic} <Flag r={r.question} /> <Dl r={r.question} /><br /><ReportBar key={r.question.old_paper + '-' + r.question.q_no} q={r.question} /></div>}
       {r.used.length ? r.used.map((u, i) => <div key={i} className="note">Taken for the 2027 quiz {u.new_paper}{u.new_q ? ` Q${u.new_q}` : ''} — {dm(u.new_paper)}</div>) : <div className="note">Not used yet ✅</div>}</>}
     {(r || editId) && <><hr /><b>{editId ? 'Editing a saved entry:' : 'Mark as taken:'}</b><br /><input className={cls(e2 && inv(np))} placeholder="2027 quiz no" value={np} onChange={x => setNp(x.target.value)} /><input className={cls(e2 && invQ(nq))} placeholder="2027 Q no" value={nq} onChange={x => setNq(x.target.value)} /><button onClick={mark}>{editId ? 'Update' : 'Save'}</button>
       {editId && <><button className="t" onClick={reset}>Cancel</button><button className="t" onClick={del}>Delete</button></>}
