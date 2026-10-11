@@ -30,7 +30,7 @@ export async function POST(req, { params }) {
       return ok({ question: q[0] || null, used });
     }
     if (a === 'mark') {
-      if (!(b.old_paper > 0) || !(b.new_paper > 0)) return err('Please fill all numbers');
+      if (!(b.old_paper >= 1 && b.old_paper <= 600) || !(b.new_paper > 0)) return err('Please fill all numbers');
       if (!(b.q_no >= 1 && b.q_no <= 10) || !(b.new_q >= 1 && b.new_q <= 10)) return err('Question number must be 1 to 10');
       const sl = b.new_q ? await sql`select id,old_paper,q_no,new_paper,new_q,"by" from used where new_paper=${b.new_paper} and new_q=${b.new_q} and id <> ${b.id || 0} order by id` : [];
       if (sl.length) return ok({ conflict: true, kind: 's', existing: sl });
@@ -50,7 +50,7 @@ export async function POST(req, { params }) {
     }
     if (a === 'unmark') { const o = (await sql`select * from used where id=${b.id}`)[0]; if (o) await log('Deleted marked entry', `2026 Quiz ${o.old_paper} Que ${o.q_no} → 2027 Quiz ${o.new_paper} Que ${o.new_q || '-'} (entered by ${o.by})`); await sql`delete from used where id=${b.id} and ("by"=${u.name} or ${u.role === 'admin'})`; return ok(); }
     if (a === 'add') {
-      if (!(b.old_paper > 0) || !(b.q_no >= 1 && b.q_no <= 10) || !(b.topic || '').trim() || !b.lesson) return err('Please fill all inputs');
+      if (!(b.old_paper >= 1 && b.old_paper <= 600) || !(b.q_no >= 1 && b.q_no <= 10) || !(b.topic || '').trim() || !b.lesson) return err('Please fill all inputs');
       const prev = await sql`select topic,added_by from questions where old_paper=${b.old_paper} and q_no=${b.q_no}`;
       await sql`insert into questions(old_paper,q_no,topic,lesson,flagged,added_by) values(${b.old_paper},${b.q_no},${b.topic.trim()},${b.lesson},${!!b.bad},${u.name})
         on conflict(old_paper,q_no) do update set topic=excluded.topic, lesson=excluded.lesson, added_by=excluded.added_by, updated_at=now(), flagged=questions.flagged or excluded.flagged`;
@@ -97,8 +97,8 @@ export async function POST(req, { params }) {
       await log('Reported bad question', `2026 Quiz ${b.old_paper} Que ${b.q_no}: ${x[0].topic}`); return ok();
     }
     if (a === 'dup') {
-      const A_ = [b.a_paper, b.b_paper].every(x => x > 0), Q_ = [b.a_q, b.b_q].every(x => x >= 1 && x <= 10);
-      if (!A_ || !Q_) return err('Enter both quiz numbers and question numbers (1 to 10)');
+      const A_ = [b.a_paper, b.b_paper].every(x => x >= 1 && x <= 600), Q_ = [b.a_q, b.b_q].every(x => x >= 1 && x <= 10);
+      if (!A_ || !Q_) return err('Quiz numbers must be 1 to 600 and question numbers 1 to 10');
       if (b.a_paper === b.b_paper && b.a_q === b.b_q) return err('These are the same question');
       await sql`insert into dups(a_paper,a_q,b_paper,b_q,reported_by) values(${b.a_paper},${b.a_q},${b.b_paper},${b.b_q},${u.name})`;
       await log('Reported repeated question', `2026 Quiz ${b.a_paper} Que ${b.a_q} = 2026 Quiz ${b.b_paper} Que ${b.b_q}`); return ok();
@@ -117,7 +117,7 @@ export async function POST(req, { params }) {
     if (a === 'import') {
       const m = new Map();
       for (const r of b.rows || []) { const o = parseInt(r.old_paper), q = parseInt(r.q_no), t = String(r.topic || '').trim();
-        if (o > 0 && q >= 1 && q <= 10 && t && LESSONS.includes(r.lesson)) m.set(o + '-' + q, [o, q, t, r.lesson]); }
+        if (o >= 1 && o <= 600 && q >= 1 && q <= 10 && t && LESSONS.includes(r.lesson)) m.set(o + '-' + q, [o, q, t, r.lesson]); }
       const v = [...m.values()]; if (!v.length) return ok({ inserted: 0, updated: 0, skipped: 0 });
       const res = await sql.query(`insert into questions(old_paper,q_no,topic,lesson,added_by) select a,b,c,d,$5::text from unnest($1::int[],$2::int[],$3::text[],$4::text[]) as t(a,b,c,d) on conflict(old_paper,q_no) do ${b.overwrite ? 'update set topic=excluded.topic, lesson=excluded.lesson, updated_at=now()' : 'nothing'} returning (xmax = 0) as ins`,
         [v.map(x => x[0]), v.map(x => x[1]), v.map(x => x[2]), v.map(x => x[3]), u.name]);
