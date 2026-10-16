@@ -80,8 +80,7 @@ export async function POST(req, { params }) {
     const rowsOf = p => sql`select u.new_q,u.old_paper,u.q_no,q.topic,q.lesson,q.flagged,q.tag,q.refined_by,q.same_as from used u left join questions q on q.old_paper=u.old_paper and q.q_no=u.q_no where u.new_paper=${p} order by u.new_q nulls last, u.id`;
     if (a === 'paper') return ok({ rows: await rowsOf(b.paper) });
     if (a === 'recent') {
-      const t = parseInt(b.today) || 0;
-      const ps = await sql`select distinct new_paper from used where new_paper between ${t - 6} and ${t} order by new_paper desc`;
+      const ps = await sql`select new_paper from used group by new_paper order by new_paper desc limit 7`;
       return ok({ papers: await Promise.all(ps.map(async x => ({ paper: x.new_paper, rows: await rowsOf(x.new_paper) }))) });
     }
     if (a === 'compare') {

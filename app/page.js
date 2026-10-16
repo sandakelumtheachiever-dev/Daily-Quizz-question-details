@@ -237,7 +237,7 @@ function Recent() {
   const [sp, setSp] = useState(''), [sr, setSr] = useState(null), [e1, setE1] = useState(false), [rec, setRec] = useState([]);
   const [cp, setCp] = useState(''), [cr, setCr] = useState(null), [e2, setE2] = useState(false);
   const [ta, setTa] = useState(''), [tb, setTb] = useState(''), [tr, setTr] = useState(null), [e3, setE3] = useState(false);
-  useEffect(() => { api('recent', { today: A.paper - dd(A.paper) }).then(r => setRec(r.papers || [])); }, []);
+  useEffect(() => { api('recent').then(r => setRec(r.papers || [])); }, []);
   const search = async () => { if (inv(sp)) { setE1(true); return; } setE1(false); setSr({ paper: n(sp), rows: (await api('paper', { paper: n(sp) })).rows || [] }); };
   const cmp = async () => { if (inv(cp)) { setE2(true); return; } setE2(false); setCr({ paper: n(cp), ...(await api('compare', { paper: n(cp) })) }); };
   const cmp2 = async () => {
@@ -249,7 +249,7 @@ function Recent() {
   return <div className="sm">
     <div className="card"><h3>Search an earlier paper</h3><input className={cls(e1)} placeholder="2027 quiz no" value={sp} onChange={x => setSp(x.target.value)} onKeyDown={x => x.key === 'Enter' && search()} /><button onClick={search}>Search</button>
       <Msg s={e1}>Enter a quiz number</Msg>{sr && <Tbl {...sr} />}</div>
-    <h3>Last 7 days (papers {A.paper - dd(A.paper) - 6} to {A.paper - dd(A.paper)})</h3>{rec.length === 0 && <span className="note">No taken questions in the last 7 days</span>}{rec.map(p => <Tbl key={p.paper} {...p} />)}
+    <h3>Latest 7 papers with taken questions</h3><div className="note">Highest paper number first, including papers for future days. Papers with no entries are skipped.</div>{rec.length === 0 && <span className="note">No taken questions yet</span>}{rec.map(p => <Tbl key={p.paper} {...p} />)}
     <div className="card"><h3>Find repeats in the previous 45 days</h3><input className={cls(e2)} placeholder="2027 quiz no" value={cp} onChange={x => setCp(x.target.value)} /><button onClick={cmp}>Compare</button>
       <Msg s={e2}>Enter a quiz number</Msg>
       {cr && (cr.total === 0 ? <div className="err">This paper doesn't have taken questions from the 2026 series, or no data entered.</div> : cr.rows.length === 0 ? <div className="note">No repeated questions with papers {Math.max(1, cr.paper - 45)} to {cr.paper - 1} ✅</div> :
