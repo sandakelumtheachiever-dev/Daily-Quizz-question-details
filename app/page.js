@@ -195,7 +195,7 @@ function Fix({ r, done }) {
   const refine = async () => { if (!by.trim() || !f) { setM('Enter the name and choose the Word file'); return; } const x = await api('refine', { old_paper: r.old_paper, q_no: r.q_no, by: by.trim(), fname: f.name, b64: f.b64 }); x.ok ? done() : setM(x.error); };
   const act = async tag => { await api('tag', { old_paper: r.old_paper, q_no: r.q_no, tag }); done(); };
   return <div className="card"><b>2026 Quiz {r.old_paper} Q{r.q_no}</b> {r.lesson && `[${r.lesson}] `}— {r.topic} <span className="note">(topic added by {r.added_by})</span><br />
-    <div>{['out of syllabus', 'not in syllabus', 'not good and refining is not worth it'].map(x => <button key={x} className="sb" onClick={() => act("Don't use this: " + x)}>Don't use this: {x}</button>)}<button className="t sb" onClick={() => act(null)}>Dismiss (it is fine)</button></div>
+    <div>{['out of syllabus', 'not good and refining is not worth it'].map(x => <button key={x} className="sb" onClick={() => act("Don't use this: " + x)}>Don't use this: {x}</button>)}<button className="t sb" onClick={() => act(null)}>Dismiss (it is fine)</button></div>
     <div style={{ marginTop: 8 }}><b>Refined it?</b> <input placeholder="Refined by (name)" value={by} onChange={x => setBy(x.target.value)} /><input type="file" accept=".doc,.docx" onChange={pick} /><button onClick={refine}>Mark refined</button> <span className="err">{m}</span></div></div>;
 }
 
