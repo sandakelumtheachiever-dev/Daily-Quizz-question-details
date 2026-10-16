@@ -26,7 +26,7 @@ export async function POST(req, { params }) {
   try {
     if (a === 'check') {
       const q = await sql`select * from questions where old_paper=${b.old_paper} and q_no=${b.q_no}`;
-      const used = await sql`select new_paper,new_q from used where (old_paper=${b.old_paper} and q_no=${b.q_no}) or concat_ws('-',old_paper,q_no)=(select same_as from questions where old_paper=${b.old_paper} and q_no=${b.q_no}) order by new_paper`;
+      const used = await sql`select new_paper,new_q from used where (old_paper=${b.old_paper} and q_no=${b.q_no}) or concat_ws('-',old_paper,q_no)=any(string_to_array((select same_as from questions where old_paper=${b.old_paper} and q_no=${b.q_no}), ',')) order by new_paper`;
       return ok({ question: q[0] || null, used });
     }
     if (a === 'mark') {
@@ -34,7 +34,7 @@ export async function POST(req, { params }) {
       if (!(b.q_no >= 1 && b.q_no <= 10) || !(b.new_q >= 1 && b.new_q <= 10)) return err('Question number must be 1 to 10');
       const sl = b.new_q ? await sql`select id,old_paper,q_no,new_paper,new_q,"by" from used where new_paper=${b.new_paper} and new_q=${b.new_q} and id <> ${b.id || 0} order by id` : [];
       if (sl.length) return ok({ conflict: true, kind: 's', existing: sl });
-      const ex = await sql`select id,old_paper,q_no,new_paper,new_q,"by" from used where ((old_paper=${b.old_paper} and q_no=${b.q_no}) or concat_ws('-',old_paper,q_no)=(select same_as from questions where old_paper=${b.old_paper} and q_no=${b.q_no})) and id <> ${b.id || 0} order by id`;
+      const ex = await sql`select id,old_paper,q_no,new_paper,new_q,"by" from used where ((old_paper=${b.old_paper} and q_no=${b.q_no}) or concat_ws('-',old_paper,q_no)=any(string_to_array((select same_as from questions where old_paper=${b.old_paper} and q_no=${b.q_no}), ','))) and id <> ${b.id || 0} order by id`;
       if (ex.length) return ok({ conflict: true, kind: 'q', existing: ex });
       const nw = `2026 Quiz ${b.old_paper} Que ${b.q_no} → 2027 Quiz ${b.new_paper} Que ${b.new_q || '-'}`;
       if (b.id) {
@@ -61,12 +61,12 @@ export async function POST(req, { params }) {
     if (a === 'search') {
       const q = (b.topic || '').trim().toLowerCase(); if (!q && !b.lesson) return ok({ same: [], near: [], taken: [] });
       if (!q) {
-        const all = await sql`select q.*, coalesce((select json_agg(json_build_object('p',new_paper,'q',new_q)) from used x where (x.old_paper=q.old_paper and x.q_no=q.q_no) or concat_ws('-',x.old_paper,x.q_no)=q.same_as),'[]') as used from questions q where lesson=${b.lesson} order by old_paper,q_no limit 500`;
+        const all = await sql`select q.*, coalesce((select json_agg(json_build_object('p',new_paper,'q',new_q)) from used x where (x.old_paper=q.old_paper and x.q_no=q.q_no) or concat_ws('-',x.old_paper,x.q_no)=any(string_to_array(q.same_as, ','))),'[]') as used from questions q where lesson=${b.lesson} order by old_paper,q_no limit 500`;
         return ok({ same: all.filter(r => !r.used.length), near: [], taken: all.filter(r => r.used.length) });
       }
       let kws = q.split(/\s+/).filter(w => w.length > 2);
       try { const k = await gem(`Exam topic: "${q}". Return JSON {"keywords":[up to 12 short lowercase keywords/synonyms/abbreviations a similar quiz topic might contain]}`); kws = [...new Set([...kws, ...k.keywords.map(x => String(x).toLowerCase())])]; } catch (e) {}
-      const rows = await sql.query(`select q.*, coalesce((select json_agg(json_build_object('p',new_paper,'q',new_q)) from used x where (x.old_paper=q.old_paper and x.q_no=q.q_no) or concat_ws('-',x.old_paper,x.q_no)=q.same_as),'[]') as used from questions q where lower(topic) like any($1) and ($2::text is null or lesson=$2) limit 200`, [kws.map(k => `%${k}%`), b.lesson || null]);
+      const rows = await sql.query(`select q.*, coalesce((select json_agg(json_build_object('p',new_paper,'q',new_q)) from used x where (x.old_paper=q.old_paper and x.q_no=q.q_no) or concat_ws('-',x.old_paper,x.q_no)=any(string_to_array(q.same_as, ','))),'[]') as used from questions q where lower(topic) like any($1) and ($2::text is null or lesson=$2) limit 200`, [kws.map(k => `%${k}%`), b.lesson || null]);
       const sc0 = x => kws.filter(k => x.topic.toLowerCase().includes(k)).length; rows.sort((x, y) => sc0(y) - sc0(x));
       let same = new Set();
       if (rows.length) try { const r = await gem(`User wants questions on: "${q}". Candidates: ${JSON.stringify(rows.slice(0, 60).map((r, i) => [i, r.topic]))}. Return JSON {"same":[indexes of candidates that are essentially the SAME topic]}`); same = new Set(r.same); } catch (e) { rows.forEach((r, i) => r.topic.toLowerCase().includes(q) && same.add(i)); }
@@ -135,8 +135,10 @@ export async function POST(req, { params }) {
     if (a === 'dupresolve') {
       const d = (await sql`select * from dups where id=${b.id}`)[0]; if (!d) return err('Not found');
       if (b.same) {
-        await sql`update questions set same_as=${d.b_paper + '-' + d.b_q} where old_paper=${d.a_paper} and q_no=${d.a_q}`;
-        await sql`update questions set same_as=${d.a_paper + '-' + d.a_q} where old_paper=${d.b_paper} and q_no=${d.b_q}`;
+        const ka = d.a_paper + '-' + d.a_q, kb = d.b_paper + '-' + d.b_q;
+        const cur = await sql`select same_as from questions where (old_paper=${d.a_paper} and q_no=${d.a_q}) or (old_paper=${d.b_paper} and q_no=${d.b_q})`;
+        const grp = new Set([ka, kb]); cur.forEach(x => (x.same_as || '').split(',').filter(Boolean).forEach(k => grp.add(k)));
+        for (const k of grp) { const [p, q] = k.split('-').map(Number); await sql`update questions set same_as=${[...grp].filter(x => x !== k).join(',')} where old_paper=${p} and q_no=${q}`; }
         await log('Confirmed same question', `2026 Quiz ${d.a_paper} Que ${d.a_q} = 2026 Quiz ${d.b_paper} Que ${d.b_q}`);
       }
       await sql`update dups set done=true where id=${b.id}`; return ok();
